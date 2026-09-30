@@ -6,8 +6,8 @@ import jdatetime
 from update_support import build_update_tab, VERSION
 from supplier_support import get_supplier, supplier_details, manage_suppliers, choose_supplier
 from PySide6.QtCore import Qt, QTimer, QObject, QEvent, QRectF, QPropertyAnimation
-from PySide6.QtGui import QColor, QIcon, QPainter, QLinearGradient, QFont, QPen, QBrush, QFontDatabase, QPixmap
-from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QLineEdit,QTableWidget,QTableWidgetItem,QHeaderView,QDialog,QFormLayout,QDialogButtonBox,QMessageBox,QComboBox,QSpinBox,QDoubleSpinBox,QLabel,QTabWidget,QTextEdit,QGridLayout,QGraphicsDropShadowEffect,QSizePolicy,QAbstractSpinBox,QScrollArea,QListWidget,QListWidgetItem,QCheckBox,QGraphicsOpacityEffect,QButtonGroup)
+from PySide6.QtGui import QColor, QIcon, QPainter, QLinearGradient, QFont, QPen, QBrush, QFontDatabase, QPixmap, QCursor
+from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QLineEdit,QTableWidget,QTableWidgetItem,QHeaderView,QDialog,QFormLayout,QDialogButtonBox,QMessageBox,QComboBox,QSpinBox,QDoubleSpinBox,QLabel,QTabWidget,QTextEdit,QGridLayout,QGraphicsDropShadowEffect,QSizePolicy,QAbstractSpinBox,QScrollArea,QListWidget,QListWidgetItem,QCheckBox,QGraphicsOpacityEffect,QButtonGroup,QStyledItemDelegate)
 ROOT=Path(os.getenv('LOCALAPPDATA',str(Path.home()))) / 'ArazmanPriceMonitor'
 ROOT.mkdir(parents=True,exist_ok=True)
 FILE=ROOT/'data.json'
@@ -46,6 +46,35 @@ class NeonHover(QObject):
     glow=QGraphicsDropShadowEffect(obj);glow.setOffset(0,0);glow.setBlurRadius(24);glow.setColor(QColor(obj.property('glowColor') or QApplication.instance().property('accentColor') or '#1565d8'));obj.setGraphicsEffect(glow)
    elif event.type()==QEvent.Leave:obj.setGraphicsEffect(None)
   return False
+class RowHoverDelegate(QStyledItemDelegate):
+ def initStyleOption(self,option,index):
+  super().initStyleOption(option,index)
+  if index.row()==self.parent().hover_row:
+   option.font.setPointSizeF(option.font.pointSizeF()+1)
+   option.font.setBold(True)
+   option.backgroundBrush=QBrush(self.parent().hover_color)
+
+class HoverTable(QTableWidget):
+ def __init__(self,*args):
+  super().__init__(*args);self.hover_row=-1;self.hover_color=QColor('#eaf1fb');self.hover_widgets=[];self.setItemDelegate(RowHoverDelegate(self));self.hover_timer=QTimer(self);self.hover_timer.timeout.connect(self.track_hover);self.hover_timer.start(60)
+ def clear_hover(self):
+  for widget,style in self.hover_widgets:
+   try:widget.setStyleSheet(style)
+   except RuntimeError:pass
+  self.hover_widgets=[];self.hover_row=-1;self.viewport().update()
+ def track_hover(self):
+  point=self.viewport().mapFromGlobal(QCursor.pos());row=self.rowAt(point.y()) if self.isVisible() and self.viewport().rect().contains(point) and self.window().isActiveWindow() else -1
+  if row==self.hover_row:return
+  self.clear_hover();self.hover_row=row
+  if row>=0:
+   theme=self.window().data.get('theme','روشن و مینیمال');surface=QColor(THEMES[theme][1]);accent=QColor(THEMES[theme][3]);self.hover_color=QColor(*[round(surface.getRgb()[i]*.9+accent.getRgb()[i]*.1) for i in range(3)])
+   for column in range(self.columnCount()):
+    widget=self.cellWidget(row,column)
+    if widget:
+     self.hover_widgets.append((widget,widget.styleSheet()));widget.setStyleSheet(widget.styleSheet()+';font-size:13px;font-weight:bold;'+('background:'+self.hover_color.name()+';' if column==14 else ''))
+     for label in widget.findChildren(QLabel):
+      self.hover_widgets.append((label,label.styleSheet()));label.setStyleSheet(label.styleSheet()+';font-size:13px;font-weight:bold;')
+  self.viewport().update()
 class AnimatedLogo(QPushButton):
  def __init__(self,parent=None):
   super().__init__(parent);self.setFixedSize(320,108);self.setCursor(Qt.PointingHandCursor);self.setToolTip('بازگشت به صفحه اصلی');self.phase=0;self.hovered=False;self.accent='#1565d8';self.setAccessibleName('Arazman — صفحه اصلی');self.timer=QTimer(self);self.timer.timeout.connect(self.animate);self.timer.start(40)
@@ -144,7 +173,7 @@ class App(QMainWindow):
   self.layout.addLayout(nav);bar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('جستجو بین کالاها');self.search.setMinimumHeight(44);self.search.textChanged.connect(self.search_changed);bar.addWidget(self.search)
   for title,fn,name in [('افزودن کالا',self.add,'addButton'),('ویرایش کالا',self.edit,'editButton'),('حذف کالا',self.remove,'deleteButton')]:
    b=self.button(bar,title,fn);b.setObjectName(name);b.setFixedSize(124,44);b.setCursor(Qt.PointingHandCursor)
-  self.layout.addLayout(bar);self.table=QTableWidget(0,16);self.table.setHorizontalHeaderLabels(HEAD[:4]+[fa(self.data['profitRate'])+'٪']+HEAD[5:]);self.table.setEditTriggers(QTableWidget.NoEditTriggers);self.table.setSelectionMode(QTableWidget.NoSelection);self.table.setFocusPolicy(Qt.NoFocus);self.table.setMouseTracking(False);self.platform_header=PlatformHeader(self.table);self.table.setHorizontalHeader(self.platform_header);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);self.table.verticalHeader().hide();self.table.setWordWrap(True);self.layout.addWidget(self.table)
+  self.layout.addLayout(bar);self.table=HoverTable(0,16);self.table.setHorizontalHeaderLabels(HEAD[:4]+[fa(self.data['profitRate'])+'٪']+HEAD[5:]);self.table.setEditTriggers(QTableWidget.NoEditTriggers);self.table.setSelectionMode(QTableWidget.NoSelection);self.table.setFocusPolicy(Qt.NoFocus);self.table.setMouseTracking(False);self.platform_header=PlatformHeader(self.table);self.table.setHorizontalHeader(self.platform_header);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);self.table.verticalHeader().hide();self.table.setWordWrap(True);self.layout.addWidget(self.table)
   bottom=QHBoxLayout();sale_area=QWidget();sale_area.setFixedWidth(220);sale_layout=QHBoxLayout(sale_area);sale_layout.setContentsMargins(0,0,0,0);self.sale_button=self.button(sale_layout,'＋  ثبت فروش',self.sell);self.sale_button.setObjectName('saleButton');self.sale_button.setFixedSize(210,56);self.sale_button.setCursor(Qt.PointingHandCursor);bottom.addWidget(sale_area);bottom.addStretch();pager=QWidget();pager_layout=QHBoxLayout(pager);pager_layout.setContentsMargins(0,0,0,0);self.button(pager_layout,'قبلی',lambda:self.turn(-1));self.page_label=QLabel();self.page_label.setAlignment(Qt.AlignCenter);self.page_label.setMinimumWidth(70);pager_layout.addWidget(self.page_label);self.button(pager_layout,'بعدی',lambda:self.turn(1));bottom.addWidget(pager);bottom.addStretch();balance=QWidget();balance.setFixedWidth(220);version_layout=QHBoxLayout(balance);version_layout.setContentsMargins(0,0,0,0);version_label=QLabel('V'+VERSION);version_label.setLayoutDirection(Qt.LeftToRight);version_label.setAlignment(Qt.AlignLeft|Qt.AlignVCenter);version_layout.addWidget(version_label);bottom.addWidget(balance);self.layout.addLayout(bottom)
   self.apply_theme();self.render();self.timer=QTimer(self);self.timer.timeout.connect(self.render);self.timer.start(60000)
  def button(self,layout,title,fn):
@@ -156,7 +185,7 @@ class App(QMainWindow):
  def target(self,p):return p['purchasePrice']+rounded(p['purchasePrice']*p.get('profitRateOverride',self.data['profitRate'])/100)
  def price(self,p,c):
   if p.get('purchasePrice') is None:return None
-  if c=='digikala':return None if p.get('commission') is None else solve(self.target(p),p['commission'],p.get('platformRate',0) if p.get('digiMode')=='credit' else 0,self.data['digiFees'])
+  if c=='digikala':return None if p.get('commission') is None else solve(self.target(p),p['commission'],0,self.data['digiFees'])
   if c=='arazman':return math.ceil(self.target(p)*100/(100-self.data['arazmanDeductionRate']))
   if c=='inperson' or c in SOCIAL and p.get('publishedChannels',{}).get(c):return self.target(p)
   return p.get(c+'Price')
@@ -173,6 +202,7 @@ class App(QMainWindow):
  def filter_pending(self):self.mode='monitor';self.pending=not self.pending;self.page=0;self.render()
  def turn(self,d):self.page=max(0,self.page+d);self.render()
  def render(self):
+  self.table.clear_hover()
   entries=self.data['deleted'] if self.mode=='deleted' else self.data['active'];entries=[(i+1,p) for i,p in enumerate(entries) if matches(p['name'],self.search.text()) and (not self.pending or any(self.pending_price(p,channel) for channel in CHANNELS))];pages=max(1,math.ceil(len(entries)/10));self.page=min(self.page,pages-1);self.page_label.setText(fa(f'{self.page+1} / {pages}'));entries=entries[self.page*10:self.page*10+10];self.table.setRowCount(len(entries));self.table.setHorizontalHeaderLabels(HEAD[:4]+[fa(self.data['profitRate'])+'٪']+HEAD[5:])
   for r,(n,p) in enumerate(entries):
    self.table.setRowHeight(r,66)
@@ -186,7 +216,12 @@ class App(QMainWindow):
    days=max(1,(date.today()-date.fromisoformat(p.get('firstPurchaseDate',today()))).days+1)
    status=QWidget();status.setStyleSheet('background:transparent;');status_layout=QVBoxLayout(status);status_layout.setContentsMargins(3,3,3,3);status_layout.setSpacing(2)
    state=QLabel(fa(days)+' روز' if p['stock'] else 'ناموجود');state.setAlignment(Qt.AlignCenter);state.setStyleSheet('color:'+('#16844a' if p['stock'] else '#d23a50')+';background:transparent;');status_layout.addWidget(state)
-   supplier=get_supplier(self.data,p.get('supplierId'));reference=QPushButton('مرجع' if supplier else 'افزودن مرجع');reference.setStyleSheet('font-size:10px;padding:2px 4px;border-radius:6px;');reference.setMaximumHeight(25);reference.setToolTip(supplier_details(supplier) if supplier else 'انتخاب تأمین‌کننده کالا');reference.clicked.connect(lambda checked=False,p=p:choose_supplier(self,p));status_layout.addWidget(reference);self.table.setCellWidget(r,14,status)
+   supplier=get_supplier(self.data,p.get('supplierId'))
+   if supplier:
+    reference=QLabel(supplier['name']);reference.setAlignment(Qt.AlignCenter);reference.setStyleSheet('font-size:11px;background:transparent;');reference.setToolTip(supplier_details(supplier))
+   else:
+    reference=QPushButton('افزودن مرجع');reference.setStyleSheet('font-size:10px;padding:2px 4px;border-radius:6px;');reference.setMaximumHeight(25);reference.setToolTip('انتخاب تأمین‌کننده کالا');reference.clicked.connect(lambda checked=False,p=p:choose_supplier(self,p))
+   status_layout.addWidget(reference);self.table.setCellWidget(r,14,status)
    self.cellbutton(r,15,'برگرداندن کالا' if self.mode=='deleted' else 'مشاهده',lambda checked=False,p=p:self.restore(p) if self.mode=='deleted' else self.report(p))
  def cell(self,r,c,text,color=None):
   self.table.removeCellWidget(r,c);item=QTableWidgetItem(text);item.setTextAlignment(Qt.AlignCenter);item.setToolTip(text)
@@ -460,7 +495,7 @@ class App(QMainWindow):
   if sale:
    self.history(p,'ویرایش فروش',copy.deepcopy(sale),dict(quantity=q.value(),unitPrice=unit,channel=c.currentData()));p['stock']+=sale['quantity']-q.value();sale.update(quantity=q.value(),unitPrice=unit,totalPrice=unit*q.value(),channel=c.currentData(),manualPrice=True);self.record_stock_event(p,'editSale',before)
   else:
-   sale=dict(id=str(uuid.uuid4()),productId=p['id'],productName=p['name'],date=today(),quantity=q.value(),channel=c.currentData(),unitPrice=unit,totalPrice=unit*q.value(),manualPrice=bool(price.text()),purchasePriceAtSale=p['purchasePrice'],feeSnapshot=dict(commission=p.get('commission'),platform=p.get('platformRate',0) if p.get('digiMode')=='credit' else 0,digi=copy.deepcopy(self.data['digiFees']),arazmanRate=self.data['arazmanDeductionRate']));self.data['sales'].append(sale);p['stock']-=q.value();self.record_stock_event(p,'sale',before)
+   sale=dict(id=str(uuid.uuid4()),productId=p['id'],productName=p['name'],date=today(),quantity=q.value(),channel=c.currentData(),unitPrice=unit,totalPrice=unit*q.value(),manualPrice=bool(price.text()),purchasePriceAtSale=p['purchasePrice'],feeSnapshot=dict(commission=p.get('commission'),platform=0,digi=copy.deepcopy(self.data['digiFees']),arazmanRate=self.data['arazmanDeductionRate']));self.data['sales'].append(sale);p['stock']-=q.value();self.record_stock_event(p,'sale',before)
   self.persist();self.render()
  def sale_notice(self,message):
   if hasattr(self,'sale_toast'):self.sale_toast.hide();self.sale_toast.deleteLater()
@@ -494,7 +529,7 @@ class App(QMainWindow):
    try:
     assert product and channel;count=quantity.value();assert 0<count<=product['stock'];unit=int(num(price.text())) if price.text().strip() else self.price(product,channel);assert unit is not None and unit>=0
    except (ValueError,AssertionError):summary.setText('کالا، قیمت یا تعداد فروش معتبر نیست');return
-   sale=dict(id=str(uuid.uuid4()),productId=product['id'],productName=product['name'],date=today(),quantity=count,channel=channel,unitPrice=unit,totalPrice=unit*count,manualPrice=bool(price.text().strip()),purchasePriceAtSale=product['purchasePrice'],feeSnapshot=dict(commission=product.get('commission'),platform=product.get('platformRate',0) if product.get('digiMode')=='credit' else 0,digi=copy.deepcopy(self.data['digiFees']),arazmanRate=self.data['arazmanDeductionRate']))
+   sale=dict(id=str(uuid.uuid4()),productId=product['id'],productName=product['name'],date=today(),quantity=count,channel=channel,unitPrice=unit,totalPrice=unit*count,manualPrice=bool(price.text().strip()),purchasePriceAtSale=product['purchasePrice'],feeSnapshot=dict(commission=product.get('commission'),platform=0,digi=copy.deepcopy(self.data['digiFees']),arazmanRate=self.data['arazmanDeductionRate']))
    before=product['stock'];product['stock']-=count;self.data['sales'].append(sale);self.record_stock_event(product,'sale',before);self.persist();self.render();d.accept();self.sale_notice(fa(count)+' عدد «'+product['name']+'» فروخته شد')
   buttons.accepted.connect(commit);d.exec()
  def profit(self,s):

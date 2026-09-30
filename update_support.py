@@ -3,7 +3,7 @@ import json, re, shutil, uuid
 from pathlib import Path
 from datetime import datetime
 from urllib.request import Request, urlopen
-VERSION='1.9'
+VERSION='2.0'
 ASSET='Arazman-Setup.exe'
 def latest_release(repo):
  if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',repo):raise ValueError('مخزن اختصاصی آرازمان هنوز تنظیم نشده است.')
