@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime, date
 import jdatetime
 from update_support import build_update_tab, VERSION
+from supplier_support import get_supplier, supplier_details, manage_suppliers, choose_supplier
 from PySide6.QtCore import Qt, QTimer, QObject, QEvent, QRectF, QPropertyAnimation
 from PySide6.QtGui import QColor, QIcon, QPainter, QLinearGradient, QFont, QPen, QBrush, QFontDatabase, QPixmap
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QLineEdit,QTableWidget,QTableWidgetItem,QHeaderView,QDialog,QFormLayout,QDialogButtonBox,QMessageBox,QComboBox,QSpinBox,QDoubleSpinBox,QLabel,QTabWidget,QTextEdit,QGridLayout,QGraphicsDropShadowEffect,QSizePolicy,QAbstractSpinBox,QScrollArea,QListWidget,QListWidgetItem,QCheckBox,QGraphicsOpacityEffect,QButtonGroup)
@@ -133,12 +134,12 @@ class App(QMainWindow):
   super().__init__();self.setWindowTitle('Arazman');self.resize(1500,850)
   try:self.data=json.loads(FILE.read_text(encoding='utf8'))
   except (OSError,ValueError):self.data={}
-  for k,v in dict(active=[],deleted=[],sales=[],stockEvents=[],history=[],profitRate=25,arazmanDeductionRate=14,digiFees=FEES,theme='روشن و مینیمال').items():self.data.setdefault(k,copy.deepcopy(v))
+  for k,v in dict(active=[],deleted=[],sales=[],stockEvents=[],history=[],suppliers=[],profitRate=25,arazmanDeductionRate=14,digiFees=FEES,theme='روشن و مینیمال').items():self.data.setdefault(k,copy.deepcopy(v))
   self.page=0;self.mode='monitor';self.pending=False
   for p in self.data['active']+self.data['deleted']:self.baselines(p)
   central=QWidget();self.setCentralWidget(central);self.layout=QVBoxLayout(central)
   nav=QHBoxLayout();nav.setSpacing(12);self.logo=AnimatedLogo(self);self.logo.clicked.connect(lambda:self.section('monitor'));nav.addWidget(self.logo);nav.addStretch()
-  for title,fn in [('کالای اصلاح نشده',self.filter_pending),('سطل آشغال',self.trash),('تنظیمات',self.settings)]:
+  for title,fn in [('مرجع',lambda:manage_suppliers(self)),('کالای اصلاح نشده',self.filter_pending),('سطل آشغال',self.trash),('تنظیمات',self.settings)]:
    b=self.button(nav,title,fn);b.setObjectName('navButton');b.setCursor(Qt.PointingHandCursor)
   self.layout.addLayout(nav);bar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('جستجو بین کالاها');self.search.setMinimumHeight(44);self.search.textChanged.connect(self.search_changed);bar.addWidget(self.search)
   for title,fn,name in [('افزودن کالا',self.add,'addButton'),('ویرایش کالا',self.edit,'editButton'),('حذف کالا',self.remove,'deleteButton')]:
@@ -182,7 +183,10 @@ class App(QMainWindow):
     elif c=='digikala' and p.get('commission') is None:self.cellbutton(r,col,'کمیسیون وارد نشده',lambda checked=False,p=p:self.commission(p))
     elif self.pending_price(p,c):self.cellbutton(r,col,money(v)+' ✓',lambda checked=False,p=p,c=c:self.confirm_price(p,c),True)
     else:self.cell(r,col,money(v))
-   days=max(1,(date.today()-date.fromisoformat(p.get('firstPurchaseDate',today()))).days+1);self.cell(r,14,fa(days)+' روز' if p['stock'] else 'ناموجود','#16844a' if p['stock'] else '#d23a50')
+   days=max(1,(date.today()-date.fromisoformat(p.get('firstPurchaseDate',today()))).days+1)
+   status=QWidget();status.setStyleSheet('background:transparent;');status_layout=QVBoxLayout(status);status_layout.setContentsMargins(3,3,3,3);status_layout.setSpacing(2)
+   state=QLabel(fa(days)+' روز' if p['stock'] else 'ناموجود');state.setAlignment(Qt.AlignCenter);state.setStyleSheet('color:'+('#16844a' if p['stock'] else '#d23a50')+';background:transparent;');status_layout.addWidget(state)
+   supplier=get_supplier(self.data,p.get('supplierId'));reference=QPushButton('مرجع' if supplier else 'افزودن مرجع');reference.setStyleSheet('font-size:10px;padding:2px 4px;border-radius:6px;');reference.setMaximumHeight(25);reference.setToolTip(supplier_details(supplier) if supplier else 'انتخاب تأمین‌کننده کالا');reference.clicked.connect(lambda checked=False,p=p:choose_supplier(self,p));status_layout.addWidget(reference);self.table.setCellWidget(r,14,status)
    self.cellbutton(r,15,'برگرداندن کالا' if self.mode=='deleted' else 'مشاهده',lambda checked=False,p=p:self.restore(p) if self.mode=='deleted' else self.report(p))
  def cell(self,r,c,text,color=None):
   self.table.removeCellWidget(r,c);item=QTableWidgetItem(text);item.setTextAlignment(Qt.AlignCenter);item.setToolTip(text)
@@ -270,7 +274,7 @@ class App(QMainWindow):
   self.persist();self.render()
  def restore(self,p):self.data['deleted'].remove(p);self.data['active'].append(p);self.persist();self.render()
  def edit(self):
-  d,l=self.dialog('ویرایش کالا');d.setFixedWidth(860);search,listing=self.product_picker(l);tabs=QTabWidget();tabs.setUsesScrollButtons(False);l.addWidget(tabs);selected={'product':None};controls={};info=QLabel('کالا را از فهرست انتخاب کنید');l.addWidget(info)
+  d,l=self.dialog('ویرایش کالا');d.setFixedWidth(1040);search,listing=self.product_picker(l);tabs=QTabWidget();tabs.setObjectName('settingsTabs');tabs.setUsesScrollButtons(False);l.addWidget(tabs);selected={'product':None};controls={};info=QLabel('کالا را از فهرست انتخاب کنید');l.addWidget(info)
   specifications=[('name','تغییر نام کالا',[('value','نام کالا','text')]),('purchasePrice','قیمت خرید',[('value','قیمت خرید (تومان)','int')]),('increase','افزایش موجودی',[('value','تعداد خرید جدید','int'),('cost','قیمت خرید هر واحد (تومان)','int')]),('stock','تغییر موجودی',[('value','موجودی','int')]),('profitRateOverride','سود اختصاصی',[('value','درصد سود','percent')]),('commission','کمیسیون',[('value','درصد کمیسیون','percent'),('platform','توسعه پلتفرم اعتباری (%)','percent')])]
   for key,label,fields in specifications:
    page=QWidget();form=QFormLayout(page);controls[key]={}
@@ -281,6 +285,10 @@ class App(QMainWindow):
    if key=='profitRateOverride':default=QCheckBox('استفاده از سود پیش‌فرض');form.addRow(default)
    if key=='commission':credit=QCheckBox('تسویه اعتباری');form.addRow(credit)
    tabs.addTab(page,label)
+  supplier_page=QWidget();supplier_layout=QVBoxLayout(supplier_page);supplier_list=QListWidget();supplier_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff);supplier_layout.addWidget(supplier_list);supplier_info=QLabel();supplier_info.setWordWrap(True);supplier_info.setTextFormat(Qt.PlainText);supplier_layout.addWidget(supplier_info);tabs.addTab(supplier_page,'مرجع')
+  def supplier_selected(*_):
+   item=supplier_list.currentItem();supplier_info.setText(supplier_details(get_supplier(self.data,item.data(Qt.UserRole))) if item else 'مرجعی انتخاب نشده است.')
+  supplier_list.currentItemChanged.connect(supplier_selected)
   tabs.setEnabled(False);buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel);save=buttons.button(QDialogButtonBox.Save);save.setText('ثبت تغییرات');save.setEnabled(False);buttons.button(QDialogButtonBox.Cancel).setText('لغو');buttons.rejected.connect(d.reject);l.addWidget(buttons)
   def selection():
    item=listing.currentItem();product=next((p for p in self.data['active'] if item and item.checkState()==Qt.Checked and p['id']==item.data(Qt.UserRole)),None);selected['product']=product;tabs.setEnabled(bool(product));save.setEnabled(bool(product))
@@ -289,11 +297,23 @@ class App(QMainWindow):
    for key,_,_ in specifications:
     value=product['name'] if key=='name' else 1 if key=='increase' else product.get(key,self.data['profitRate'] if key=='profitRateOverride' else 0)
     widget=controls[key]['value'];widget.setText(value) if key=='name' else widget.setValue(value or 0)
+   supplier_list.clear()
+   empty=QListWidgetItem('بدون مرجع');empty.setData(Qt.UserRole,None);supplier_list.addItem(empty);supplier_list.setCurrentItem(empty)
+   for supplier in self.data.get('suppliers',[]):
+    supplier_item=QListWidgetItem(supplier['name']);supplier_item.setData(Qt.UserRole,supplier['id']);supplier_list.addItem(supplier_item)
+    if supplier['id']==product.get('supplierId'):supplier_list.setCurrentItem(supplier_item)
    controls['increase']['cost'].setValue(product['purchasePrice']);controls['commission']['platform'].setValue(product.get('platformRate',0));default.setChecked('profitRateOverride' not in product);credit.setChecked(product.get('digiMode')=='credit');tabs.setTabVisible(5,product.get('commission') is not None)
   listing.currentItemChanged.connect(selection)
   def commit():
    product=selected['product']
    if not product:return
+   if tabs.currentIndex()==6:
+    item=supplier_list.currentItem()
+    if item is None:info.setText('یک مرجع را انتخاب کنید');return
+    previous=get_supplier(self.data,product.get('supplierId'));supplier=get_supplier(self.data,item.data(Qt.UserRole))
+    if supplier:product['supplierId']=supplier['id']
+    else:product.pop('supplierId',None)
+    self.history(product,'تغییر مرجع',previous['name'] if previous else None,supplier['name'] if supplier else None);self.persist();self.render();selection();info.setText(product['name']+' — مرجع ثبت شد');return
    key=specifications[tabs.currentIndex()][0];widget=controls[key]['value'];value=widget.text().strip() if key=='name' else widget.value();before=product['stock'];old=product.get(key)
    if key=='name' and not value:info.setText('نام کالا الزامی است');return
    if key=='increase':
