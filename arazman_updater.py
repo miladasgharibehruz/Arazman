@@ -50,34 +50,29 @@ def write_status(data_dir, status, **details):
 # Windows helpers
 # -----------------------------
 def wait_pid(pid, timeout=60):
-    if not pid:
+    if not pid or os.name != "nt":
         return True
-    if os.name != "nt":
-        return True
-
-    try:
-        import ctypes
-
-        SYNCHRONIZE = 0x00100000
-        h = ctypes.windll.kernel32.OpenProcess(
-            SYNCHRONIZE, False, int(pid)
-        )
-        if not h:
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.WaitForSingleObject.restype = wintypes.DWORD
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    handle = kernel.OpenProcess(0x00100000, False, int(pid))
+    if not handle:
+        if ctypes.get_last_error() == 87:
             return True
-
-        result = ctypes.windll.kernel32.WaitForSingleObject(
-            h, int(timeout * 1000)
-        )
-        ctypes.windll.kernel32.CloseHandle(h)
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        result = kernel.WaitForSingleObject(handle, int(timeout * 1000))
+        if result == 0xFFFFFFFF:
+            raise ctypes.WinError(ctypes.get_last_error())
         return result == 0
-    except Exception:
-        for _ in range(int(timeout * 10)):
-            try:
-                os.kill(int(pid), 0)
-                time.sleep(0.1)
-            except Exception:
-                return True
-        return False
+    finally:
+        kernel.CloseHandle(handle)
 
 
 def elevate_if_needed(argv):
