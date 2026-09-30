@@ -39,6 +39,19 @@ def solve(target,commission,platform,cfg):
   if net(mid,commission,platform,cfg)>=target:hi=mid
   else:lo=mid+1
  return lo
+def total_purchase_cost(product,events):
+ records=[e for e in events if e.get('productId')==product['id']]
+ initial=any(e.get('type')=='initial' for e in records)
+ # Older products without an opening event retain their opening quantity.
+ opening=0 if initial else (records[0].get('before',0) if records else product.get('stock',0))
+ total=max(0,opening)*product.get('purchasePrice',0)
+ for event in records:
+  if event.get('type') not in ('initial','increase','set'):continue
+  quantity=max(0,event.get('change',event.get('after',0)-event.get('before',0)))
+  price=event.get('purchasePrice')
+  if price is None:price=product.get('purchasePrice',0)
+  total+=quantity*price
+ return total
 class NeonHover(QObject):
  def eventFilter(self,obj,event):
   if isinstance(obj,QPushButton) and not isinstance(obj,AnimatedLogo):
@@ -379,7 +392,7 @@ class App(QMainWindow):
    elif key=='profitRateOverride' and default.isChecked():product.pop(key,None);self.history(product,'بازگشت سود به پیش‌فرض',old,self.data['profitRate'])
    else:
     product[key]=value;self.history(product,key,old,value)
-    if key=='stock':self.record_stock_event(product,'set',before)
+    if key=='stock':self.record_stock_event(product,'set',before,purchasePrice=product['purchasePrice'])
     if key=='commission':product['platformRate']=controls[key]['platform'].value();product['digiMode']='credit' if credit.isChecked() else 'cash'
    self.persist();self.render();selection();info.setText(product['name']+' — تغییرات ثبت شد')
   buttons.accepted.connect(commit);d.exec()
@@ -398,7 +411,7 @@ class App(QMainWindow):
   else:
    if key=='name' and not v['value']:return
    p[key]=v['value'];self.history(p,key,old,p[key])
-   if key=='stock':self.record_stock_event(p,'set',before)
+   if key=='stock':self.record_stock_event(p,'set',before,purchasePrice=p['purchasePrice'])
   self.persist();parent.accept();self.render()
  def commission(self,p):
   v=self.form('کمیسیون دیجیکالا',[('commission','کمیسیون (%)',p.get('commission',0),'percent'),('platformRate','توسعه پلتفرم اعتباری (%)',p.get('platformRate',0),'percent')])
@@ -565,7 +578,7 @@ class App(QMainWindow):
   d,l=self.dialog('گزارش '+p['name']);d.resize(1120,650);tabs=QTabWidget();tabs.setObjectName('settingsTabs');l.addWidget(tabs);sales=[s for s in self.data['sales'] if s['productId']==p['id']];active=[s for s in sales if not s.get('cancelled')]
   def text_tab(title,text):w=QTextEdit();w.setReadOnly(True);w.setPlainText(text);tabs.addTab(w,title)
   profits=[self.profit(s) for s in active];summary=QWidget();cards=QGridLayout(summary);cards.setContentsMargins(18,18,18,18);cards.setSpacing(14)
-  values=[('تاریخ اولین خرید',fa(jd(p['firstPurchaseDate']))),('مجموع قیمت خرید',money(sum(s['purchasePriceAtSale']*s['quantity'] for s in active if s.get('purchasePriceAtSale') is not None))),('قیمت خرید فعلی',money(p['purchasePrice'])),('درصد سود فعلی',fa(p.get('profitRateOverride',self.data['profitRate']))+'٪'),('تعداد کل فروخته‌شده',fa(sum(s['quantity'] for s in active))+' عدد'),('مجموع مبلغ فروش',money(sum(s['totalPrice'] for s in active))),('مجموع سود فروش‌ها',money(sum(v for v in profits if v is not None))),('تعداد ثبت‌های فروش',fa(len(active)))]
+  values=[('تاریخ اولین خرید',fa(jd(p['firstPurchaseDate']))),('مجموع قیمت خرید',money(total_purchase_cost(p,self.data['stockEvents']))),('قیمت خرید فعلی',money(p['purchasePrice'])),('درصد سود فعلی',fa(p.get('profitRateOverride',self.data['profitRate']))+'٪'),('تعداد کل فروخته‌شده',fa(sum(s['quantity'] for s in active))+' عدد'),('مجموع مبلغ فروش',money(sum(s['totalPrice'] for s in active))),('مجموع سود فروش‌ها',money(sum(v for v in profits if v is not None))),('تعداد ثبت‌های فروش',fa(len(active)))]
   for index,(label,value) in enumerate(values):
    card=QWidget();card.setObjectName('productSearchGroup');layout=QVBoxLayout(card);layout.setContentsMargins(18,14,18,14);caption=QLabel(label);caption.setAlignment(Qt.AlignCenter);number=QLabel(value);number.setAlignment(Qt.AlignCenter);number.setStyleSheet('font-size:18px;font-weight:bold;');layout.addWidget(caption);layout.addWidget(number);cards.addWidget(card,index//4,index%4)
    if label=='مجموع سود فروش‌ها':
