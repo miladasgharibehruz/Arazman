@@ -29,7 +29,7 @@ jobs:
           source = p.read_text(encoding='utf-8')
 
           if os.environ['GITHUB_REF_TYPE'] == 'tag':
-              version = os.environ['GITHUB_REF_NAME'].removeprefix('v')
+              version = os.environ['GITHUB_REF_NAME'].lstrip('vV')
           else:
               version = re.search(r"VERSION='([^']+)'", source).group(1)
 
