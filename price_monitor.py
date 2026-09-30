@@ -16,7 +16,7 @@ HEAD=['Ø±Ø¯ÛŒÙ','Ù†Ø§Ù… Ú©Ø§Ù„Ø§','Ù‚ÛŒÙ…Øª 
 FEES=dict(processing_percent=7,processing_min=36000,processing_max=240000,label_cost=6000,tax_percent=10)
 THEMES={'Ø±ÙˆØ´Ù† Ùˆ Ù…ÛŒÙ†ÛŒÙ…Ø§Ù„':('#f3f6fb','#ffffff','#172b4d','#1565d8','#d8e2ef'),'Ø³Ø±Ù…Ù‡â€ŒØ§ÛŒ Ùˆ Ù…Ø³ÛŒ':('#071526','#11243a','#edf3fa','#bf8058','#354c65'),'ØªÛŒØ±Ù‡ Ùˆ Ù†Ø¦ÙˆÙ†ÛŒ':('#090f16','#131d28','#e0f6ff','#00b5d4','#314550'),'Ú©Ø±Ù… Ùˆ Ø²ÛŒØªÙˆÙ†ÛŒ':('#f6f3e9','#fffdf6','#303927','#68764d','#dedfcd')}
 def num(v): return str(v).translate(str.maketrans('Û°Û±Û²Û³Û´ÛµÛ¶Û·Û¸Û¹Ù Ù¡Ù¢Ù£Ù¤Ù¥Ù¦Ù§Ù¨Ù©','01234567890123456789')).replace(',','').replace('Ù¬','').replace('Ù«','.')
-def fa(v): return str(v).translate(str.maketrans('0123456789','Û°Û±Û²Û³Û´ÛµÛ¶Û·Û¸Û¹'))
+def fa(v): return str(v).translate({ord(str(i)): chr(0x06F0+i) for i in range(10)})
 def money(v): return 'â€”' if v is None else fa(f'{v:,.0f}')+' ØªÙˆÙ…Ø§Ù†'
 def norm(v): return re.sub('[ÙŽÙ‹ÙÙŒÙÙÙ’Ù‘Ù€â€Œ]','',v.lower().replace('ÙŠ','ÛŒ').replace('Ùƒ','Ú©'))
 def matches(name,q): return not q or any(w.startswith(norm(q)) for w in re.split(r'\W+',norm(name)))
