@@ -68,4 +68,10 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" output/Arazman-Setup.exe output/Arazman-Setup.exe.sha256 --title "Arazman ${{ github.ref_name }}" --generate-notes
+        run: |
+          gh release view "${{ github.ref_name }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload "${{ github.ref_name }}" output/Arazman-Setup.exe output/Arazman-Setup.exe.sha256 --clobber
+          } else {
+            gh release create "${{ github.ref_name }}" output/Arazman-Setup.exe output/Arazman-Setup.exe.sha256 --title "Arazman ${{ github.ref_name }}" --generate-notes
+          }
