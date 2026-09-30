@@ -115,13 +115,35 @@ class PlatformHeader(QHeaderView):
   elif index==9:
    painter.drawText(QRectF(rect.left(),rect.top()+2,rect.width(),20),Qt.AlignCenter,'▣');textrect.setTop(rect.top()+25)
   painter.drawText(textrect,Qt.AlignCenter|Qt.TextWordWrap,label);painter.restore()
+class DialogDrag(QObject):
+ def __init__(self,dialog,bar):
+  super().__init__(dialog);self.dialog=dialog;self.bar=bar;self.offset=None;self.grabber=None
+  for widget in [bar]+bar.findChildren(QLabel):
+   widget.setCursor(Qt.SizeAllCursor);widget.installEventFilter(self)
+ def eventFilter(self,obj,event):
+  kind=event.type()
+  if kind==QEvent.MouseButtonPress and event.button()==Qt.LeftButton:
+   self.offset=event.globalPosition().toPoint()-self.dialog.pos();self.grabber=obj;obj.grabMouse();return True
+  if kind==QEvent.MouseMove and self.offset is not None:
+   if event.buttons() & Qt.LeftButton:self.dialog.move(event.globalPosition().toPoint()-self.offset);return True
+   self.stop()
+  if kind==QEvent.MouseButtonRelease and event.button()==Qt.LeftButton and self.offset is not None:
+   self.stop();return True
+  if kind in (QEvent.Hide,QEvent.UngrabMouse):self.stop()
+  return False
+ def stop(self):
+  grabber=self.grabber;self.grabber=None;self.offset=None
+  if grabber is not None and QWidget.mouseGrabber()==grabber:grabber.releaseMouse()
+def enable_dialog_drag(dialog,bar):
+ dialog._title_drag=DialogDrag(dialog,bar)
+
 class ThemedDialog(QDialog):
  def __init__(self,parent,title):
   self.close_only_with_x=title in ['افزودن کالا','ویرایش کالا','انتخاب کالا با نام یا شماره']
   flags=(Qt.Dialog if self.close_only_with_x else Qt.Popup)|Qt.FramelessWindowHint
   super().__init__(parent,flags);self.setWindowTitle(title);self.setObjectName('settingsWindow');self.setMinimumWidth(500);self.setLayoutDirection(Qt.RightToLeft)
   outer=QVBoxLayout(self);outer.setContentsMargins(1,1,1,1);outer.setSpacing(0)
-  bar=QWidget();bar.setObjectName('settingsTitle');bar.setFixedHeight(48);row=QHBoxLayout(bar);row.setContentsMargins(16,8,12,8);label=QLabel(title);label.setWordWrap(True);label.setObjectName('settingsTitleLabel');row.addWidget(label,1);close=QPushButton('×');close.setObjectName('settingsClose');close.setFixedSize(34,32);close.clicked.connect(self.reject);row.addWidget(close);outer.addWidget(bar)
+  bar=QWidget();bar.setObjectName('settingsTitle');bar.setFixedHeight(48);row=QHBoxLayout(bar);row.setContentsMargins(16,8,12,8);label=QLabel(title);label.setWordWrap(True);label.setObjectName('settingsTitleLabel');row.addWidget(label,1);close=QPushButton('×');close.setObjectName('settingsClose');close.setFixedSize(34,32);close.clicked.connect(self.reject);row.addWidget(close);outer.addWidget(bar);enable_dialog_drag(self,bar)
   content=QWidget();self.content_layout=QVBoxLayout(content);self.content_layout.setContentsMargins(22,20,22,20);self.content_layout.setSpacing(14);outer.addWidget(content)
  def showEvent(self,event):
   super().showEvent(event)
@@ -398,7 +420,7 @@ class App(QMainWindow):
  def trash(self):
   d=QDialog(self,Qt.Popup|Qt.FramelessWindowHint);self.trash_window=d;d.setObjectName('settingsWindow');d.setFixedSize(760,390);d.setLayoutDirection(Qt.RightToLeft)
   layout=QVBoxLayout(d);layout.setContentsMargins(1,1,1,12);layout.setSpacing(12)
-  bar=QWidget();bar.setObjectName('settingsTitle');bar.setFixedHeight(48);row=QHBoxLayout(bar);row.setContentsMargins(16,8,12,8);title=QLabel('سطل آشغال');title.setObjectName('settingsTitleLabel');row.addWidget(title);row.addStretch();close=QPushButton('×');close.setObjectName('settingsClose');close.setFixedSize(34,32);close.clicked.connect(d.close);row.addWidget(close);layout.addWidget(bar)
+  bar=QWidget();bar.setObjectName('settingsTitle');bar.setFixedHeight(48);row=QHBoxLayout(bar);row.setContentsMargins(16,8,12,8);title=QLabel('سطل آشغال');title.setObjectName('settingsTitleLabel');row.addWidget(title);row.addStretch();close=QPushButton('×');close.setObjectName('settingsClose');close.setFixedSize(34,32);close.clicked.connect(d.close);row.addWidget(close);layout.addWidget(bar);enable_dialog_drag(d,bar)
   scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QScrollArea.NoFrame);layout.addWidget(scroll)
   def refresh():
    old=scroll.takeWidget()
@@ -423,7 +445,7 @@ class App(QMainWindow):
  def settings(self):
   d=QDialog(self,Qt.Popup|Qt.FramelessWindowHint);self.settings_window=d;d.setObjectName('settingsWindow');d.setFixedSize(860,470);d.setLayoutDirection(Qt.RightToLeft)
   l=QVBoxLayout(d);l.setContentsMargins(1,1,1,12);l.setSpacing(12)
-  bar=QWidget();bar.setObjectName('settingsTitle');bar.setFixedHeight(48);row=QHBoxLayout(bar);row.setContentsMargins(16,8,12,8);title=QLabel('تنظیمات');title.setObjectName('settingsTitleLabel');row.addWidget(title);row.addStretch();close=QPushButton('×');close.setObjectName('settingsClose');close.setFixedSize(34,32);close.clicked.connect(d.close);row.addWidget(close);l.addWidget(bar)
+  bar=QWidget();bar.setObjectName('settingsTitle');bar.setFixedHeight(48);row=QHBoxLayout(bar);row.setContentsMargins(16,8,12,8);title=QLabel('تنظیمات');title.setObjectName('settingsTitleLabel');row.addWidget(title);row.addStretch();close=QPushButton('×');close.setObjectName('settingsClose');close.setFixedSize(34,32);close.clicked.connect(d.close);row.addWidget(close);l.addWidget(bar);enable_dialog_drag(d,bar)
   tabs=QTabWidget();tabs.setObjectName('settingsTabs');l.addWidget(tabs)
   notice=QLabel(d);notice.setObjectName('settingsNotice');notice.setAlignment(Qt.AlignCenter);notice.setAttribute(Qt.WA_TransparentForMouseEvents);notice.hide();notice_timer=QTimer(d);notice_timer.setSingleShot(True);notice_timer.timeout.connect(notice.hide);tabs.currentChanged.connect(lambda _:notice.hide())
   def notify(message):
