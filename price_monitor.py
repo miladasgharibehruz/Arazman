@@ -16,7 +16,7 @@ HEAD=['ردیف','نام کالا','قیمت خرید','موجودی','قیمت 
 FEES=dict(processing_percent=7,processing_min=36000,processing_max=240000,label_cost=6000,tax_percent=10)
 THEMES={'روشن و مینیمال':('#f3f6fb','#ffffff','#172b4d','#1565d8','#d8e2ef'),'سرمه‌ای و مسی':('#071526','#11243a','#edf3fa','#bf8058','#354c65'),'تیره و نئونی':('#090f16','#131d28','#e0f6ff','#00b5d4','#314550'),'کرم و زیتونی':('#f6f3e9','#fffdf6','#303927','#68764d','#dedfcd')}
 def num(v): return str(v).translate(str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩','01234567890123456789')).replace(',','').replace('٬','').replace('٫','.')
-def fa(v): return str(v).translate(str.maketrans('0123456789','۰۱۲۳۴۵۶۷۸۹'))
+def fa(v): return str(v).translate({ord(str(i)): chr(0x06F0+i) for i in range(10)})
 def money(v): return '—' if v is None else fa(f'{v:,.0f}')+' تومان'
 def norm(v): return re.sub('[ًٌٍَُِّْـ‌]','',v.lower().replace('ي','ی').replace('ك','ک'))
 def matches(name,q): return not q or any(w.startswith(norm(q)) for w in re.split(r'\W+',norm(name)))
@@ -166,7 +166,7 @@ class App(QMainWindow):
    if v is not None:p['confirmedPrices'].setdefault(c,v)
  def pending_price(self,p,c):
   v=self.price(p,c);old=p.get('digiConfirmedPrice') if c=='digikala' else p.get('confirmedPrices',{}).get(c)
-  return v is not None and old is not None and v!=old
+  return v is not None and (c in p.get('initialPendingPrices',[]) or old is not None and v!=old)
  def section(self,s):self.mode=s;self.pending=False;self.page=0;self.render()
  def search_changed(self):self.page=0;self.render()
  def filter_pending(self):self.mode='monitor';self.pending=not self.pending;self.page=0;self.render()
@@ -244,18 +244,30 @@ class App(QMainWindow):
  def yes(self,title,text):
   d,l=self.dialog(title);message=QLabel(text);message.setWordWrap(True);l.addWidget(message);buttons=QDialogButtonBox();yes=buttons.addButton('بله',QDialogButtonBox.AcceptRole);no=buttons.addButton('خیر',QDialogButtonBox.RejectRole);buttons.accepted.connect(d.accept);buttons.rejected.connect(d.reject);l.addWidget(buttons);return d.exec()==QDialog.Accepted
  def add(self):
-  v=self.form('افزودن کالا',[('name','نام کالا','','text'),('stock','موجودی',0,'int'),('purchasePrice','قیمت خرید (تومان)',0,'int'),('commission','کمیسیون اختیاری (%)','','text')],purchase_date=True)
+  v=self.form('افزودن کالا',[('name','نام کالا','','text'),('stock','موجودی',0,'int'),('purchasePrice','قیمت خرید (تومان)',0,'int'),('commission','کمیسیون اختیاری (%)','','text'),('platformRate','کمیسیون فروش اعتباری – اختیاری (%)','','text')],purchase_date=True)
   if not v:return
   if not v['name']:QMessageBox.warning(self,'خطا','نام کالا الزامی است.');return
-  try:commission=None if not v['commission'] else float(num(v['commission']));assert commission is None or 0<=commission<=100
+  try:
+   commission=None if not v['commission'] else float(num(v['commission']))
+   platform=None if not v['platformRate'] else float(num(v['platformRate']))
+   assert commission is None or math.isfinite(commission) and 0<=commission<100
+   assert platform is None or math.isfinite(platform) and 0<=platform<100
+   assert commission is None or commission+(platform or 0)<100
   except (ValueError,AssertionError):QMessageBox.warning(self,'خطا','کمیسیون معتبر نیست.');return
   purchase=v['purchaseDate']
   p=dict(id=str(uuid.uuid4()),name=v['name'],stock=v['stock'],purchasePrice=v['purchasePrice'],firstPurchaseDate=purchase)
-  if commission is not None:p.update(commission=commission,digiMode='cash');p['digiConfirmedPrice']=self.price(p,'digikala')
-  self.baselines(p);self.data['active'].append(p);self.record_stock_event(p,'initial',0,purchasePrice=p['purchasePrice']);self.persist();self.render()
+  if platform is not None:p.update(platformRate=platform,digiMode='credit')
+  if commission is not None:p.update(commission=commission,digiMode='credit' if platform is not None else 'cash');p['digiConfirmedPrice']=self.price(p,'digikala')
+  self.baselines(p);p['initialPendingPrices']=['arazman'];self.data['active'].append(p);self.record_stock_event(p,'initial',0,purchasePrice=p['purchasePrice']);self.persist();self.render()
  def remove(self):
   p=self.choose()
   if p and self.yes('حذف کالا','کالا به سطل آشغال منتقل شود؟'):self.data['active'].remove(p);self.data['deleted'].append(p);self.persist();self.render()
+ def purge_product(self,p):
+  if p not in self.data['deleted']:return
+  self.data['deleted'].remove(p)
+  for key in ['sales','stockEvents','history']:
+   self.data[key]=[entry for entry in self.data[key] if entry.get('productId')!=p['id']]
+  self.persist();self.render()
  def restore(self,p):self.data['deleted'].remove(p);self.data['active'].append(p);self.persist();self.render()
  def edit(self):
   d,l=self.dialog('ویرایش کالا');d.setFixedWidth(860);search,listing=self.product_picker(l);tabs=QTabWidget();tabs.setUsesScrollButtons(False);l.addWidget(tabs);selected={'product':None};controls={};info=QLabel('کالا را از فهرست انتخاب کنید');l.addWidget(info)
@@ -326,9 +338,10 @@ class App(QMainWindow):
   if self.yes('تأیید اصلاح قیمت',f'قیمت قبلی: {money(old)}\nقیمت جدید: {money(new)}\nآیا در {CHANNELS[c]} اصلاح کرده‌اید؟'):
    if c=='digikala':p['digiConfirmedPrice']=new
    else:p['confirmedPrices'][c]=new
+   p['initialPendingPrices']=[channel for channel in p.get('initialPendingPrices',[]) if channel!=c]
    self.history(p,'تأیید قیمت '+CHANNELS[c],old,new);self.persist();self.render()
  def trash(self):
-  d=QDialog(self,Qt.Popup|Qt.FramelessWindowHint);self.trash_window=d;d.setObjectName('settingsWindow');d.setFixedSize(560,390);d.setLayoutDirection(Qt.RightToLeft)
+  d=QDialog(self,Qt.Popup|Qt.FramelessWindowHint);self.trash_window=d;d.setObjectName('settingsWindow');d.setFixedSize(760,390);d.setLayoutDirection(Qt.RightToLeft)
   layout=QVBoxLayout(d);layout.setContentsMargins(1,1,1,12);layout.setSpacing(12)
   bar=QWidget();bar.setObjectName('settingsTitle');bar.setFixedHeight(48);row=QHBoxLayout(bar);row.setContentsMargins(16,8,12,8);title=QLabel('سطل آشغال');title.setObjectName('settingsTitleLabel');row.addWidget(title);row.addStretch();close=QPushButton('×');close.setObjectName('settingsClose');close.setFixedSize(34,32);close.clicked.connect(d.close);row.addWidget(close);layout.addWidget(bar)
   scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setFrameShape(QScrollArea.NoFrame);layout.addWidget(scroll)
@@ -343,7 +356,13 @@ class App(QMainWindow):
     def bring_back(checked=False,product=product):
      if product in self.data['deleted']:self.restore(product)
      refresh()
-    button.clicked.connect(bring_back);items.addWidget(item)
+    button.clicked.connect(bring_back)
+    erase=QPushButton('حذف دائمی');erase.setMinimumHeight(40);erase.setStyleSheet('QPushButton{color:#bc4054;border-color:#bc4054;} QPushButton:hover{background:#bc4054;color:white;}');line.addWidget(erase)
+    def permanently_remove(checked=False,product=product):
+     if product not in self.data['deleted']:return
+     if QMessageBox.question(d,'حذف دائمی','کالای «'+product['name']+'» و تمام فروش‌ها و سوابق مربوط به آن برای همیشه حذف شوند؟',QMessageBox.Yes|QMessageBox.No,QMessageBox.No)!=QMessageBox.Yes:return
+     self.purge_product(product);refresh()
+    erase.clicked.connect(permanently_remove);items.addWidget(item)
    items.addStretch();scroll.setWidget(content)
   refresh();d.move(self.mapToGlobal(self.rect().center())-d.rect().center());d.show()
  def settings(self):
@@ -521,8 +540,12 @@ class App(QMainWindow):
    if key=='channel':return CHANNELS.get(value,value)
    return fa(value)
   history_table('تاریخچه تغییرات',['تاریخ','نوع تغییر','مقدار قبلی','مقدار جدید'],[[fa(jd(e['date'])),labels.get(e['label'],e['label']),display(e.get('before'),e['label']),display(e.get('after'),e['label'])] for e in reversed(self.data['history']) if e['productId']==p['id']]);d.exec()
- def quit_after_update(self):QApplication.instance().quit()
+ def quit_after_update(self):
+  self._quitting_for_update=True
+  self.close()
+  QApplication.instance().exit(0)
  def closeEvent(self,event):
+  if getattr(self,'_quitting_for_update',False):event.accept();return
   if not self.yes('خروج','همه تغییرات ذخیره شوند و پشتیبان گرفته شود؟'):event.ignore();return
   try:self.persist();backup=ROOT/'backups';backup.mkdir(exist_ok=True);(backup/(datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.json')).write_text(json.dumps(self.data,ensure_ascii=False,indent=2),encoding='utf8')
   except OSError as ex:QMessageBox.critical(self,'ذخیره‌سازی',str(ex));event.ignore();return
