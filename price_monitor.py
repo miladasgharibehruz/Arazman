@@ -222,11 +222,12 @@ class App(QMainWindow):
   if p.get('purchasePrice') is None:return None
   if c=='digikala':return None if p.get('commission') is None else solve(self.target(p),p['commission'],0,self.data['digiFees'])
   if c=='arazman':return math.ceil(self.target(p)*100/(100-self.data['arazmanDeductionRate']))
+  if c=='basalam':return None if p.get('basalamCommission') is None else math.ceil(self.target(p)/(1-p['basalamCommission']/100))
   if c=='inperson' or c in SOCIAL and p.get('publishedChannels',{}).get(c):return self.target(p)
   return p.get(c+'Price')
  def baselines(self,p):
   p.setdefault('confirmedPrices',{})
-  for c in ['arazman']+SOCIAL:
+  for c in ['arazman','basalam']+SOCIAL:
    v=self.price(p,c)
    if v is not None:p['confirmedPrices'].setdefault(c,v)
  def pending_price(self,p,c):
@@ -245,6 +246,7 @@ class App(QMainWindow):
    for col,c in enumerate(CHANNELS,start=5):
     v=self.price(p,c)
     if c in SOCIAL and not p.get('publishedChannels',{}).get(c):self.cellbutton(r,col,'ثبت انتشار',lambda checked=False,p=p,c=c:self.publish(p,c))
+    elif c=='basalam' and p.get('basalamCommission') is None:self.cellbutton(r,col,'کمیسیون وارد نشده',lambda checked=False,p=p:self.basalam_commission(p))
     elif c=='digikala' and p.get('commission') is None:self.cellbutton(r,col,'کمیسیون وارد نشده',lambda checked=False,p=p:self.commission(p))
     elif self.pending_price(p,c):self.cellbutton(r,col,money(v)+' ✓',lambda checked=False,p=p,c=c:self.confirm_price(p,c),True)
     else:self.cell(r,col,money(v))
@@ -318,11 +320,13 @@ class App(QMainWindow):
  def yes(self,title,text):
   d,l=self.dialog(title);message=QLabel(text);message.setWordWrap(True);l.addWidget(message);buttons=QDialogButtonBox();yes=buttons.addButton('بله',QDialogButtonBox.AcceptRole);no=buttons.addButton('خیر',QDialogButtonBox.RejectRole);buttons.accepted.connect(d.accept);buttons.rejected.connect(d.reject);l.addWidget(buttons);return d.exec()==QDialog.Accepted
  def add(self):
-  v=self.form('افزودن کالا',[('name','نام کالا','','text'),('stock','موجودی',0,'int'),('purchasePrice','قیمت خرید (تومان)',0,'int'),('commission','کمیسیون اختیاری (%)','','text'),('platformRate','کمیسیون فروش اعتباری – اختیاری (%)','','text')],purchase_date=True)
+  v=self.form('افزودن کالا',[('name','نام کالا','','text'),('stock','موجودی',0,'int'),('purchasePrice','قیمت خرید (تومان)',0,'int'),('commission','کمیسیون اختیاری (%)','','text'),('platformRate','کمیسیون فروش اعتباری – اختیاری (%)','','text'),('basalamCommission','کمیسیون باسلام – اختیاری (%)','','text')],purchase_date=True)
   if not v:return
   if not v['name']:QMessageBox.warning(self,'خطا','نام کالا الزامی است.');return
   try:
    commission=None if not v['commission'] else float(num(v['commission']))
+   basalam=None if not v['basalamCommission'].strip() else float(num(v['basalamCommission']))
+   assert basalam is None or math.isfinite(basalam) and 0<=basalam<100
    platform=None if not v['platformRate'] else float(num(v['platformRate']))
    assert commission is None or math.isfinite(commission) and 0<=commission<100
    assert platform is None or math.isfinite(platform) and 0<=platform<100
@@ -332,6 +336,7 @@ class App(QMainWindow):
   p=dict(id=str(uuid.uuid4()),name=v['name'],stock=v['stock'],purchasePrice=v['purchasePrice'],firstPurchaseDate=purchase)
   if platform is not None:p.update(platformRate=platform,digiMode='credit')
   if commission is not None:p.update(commission=commission,digiMode='credit' if platform is not None else 'cash');p['digiConfirmedPrice']=self.price(p,'digikala')
+  if basalam is not None:p['basalamCommission']=basalam
   self.baselines(p);p['initialPendingPrices']=['arazman'];self.data['active'].append(p);self.record_stock_event(p,'initial',0,purchasePrice=p['purchasePrice']);self.persist();self.render()
  def remove(self):
   p=self.choose()
@@ -344,13 +349,13 @@ class App(QMainWindow):
   self.persist();self.render()
  def restore(self,p):self.data['deleted'].remove(p);self.data['active'].append(p);self.persist();self.render()
  def edit(self):
-  d,l=self.dialog('ویرایش کالا');d.setFixedWidth(1040);search,listing=self.product_picker(l);tabs=QTabWidget();tabs.setObjectName('settingsTabs');tabs.setUsesScrollButtons(False);l.addWidget(tabs);selected={'product':None};controls={};info=QLabel('کالا را از فهرست انتخاب کنید');l.addWidget(info)
-  specifications=[('name','تغییر نام کالا',[('value','نام کالا','text')]),('purchasePrice','قیمت خرید',[('value','قیمت خرید (تومان)','int')]),('increase','افزایش موجودی',[('value','تعداد خرید جدید','int'),('cost','قیمت خرید هر واحد (تومان)','int')]),('stock','تغییر موجودی',[('value','موجودی','int')]),('profitRateOverride','سود اختصاصی',[('value','درصد سود','percent')]),('commission','کمیسیون',[('value','درصد کمیسیون','percent'),('platform','توسعه پلتفرم اعتباری (%)','percent')])]
+  d,l=self.dialog('ویرایش کالا');d.setFixedWidth(1040);search,listing=self.product_picker(l);tabs=QTabWidget();tabs.setObjectName('settingsTabs');tabs.setUsesScrollButtons(True);l.addWidget(tabs);selected={'product':None};controls={};info=QLabel('کالا را از فهرست انتخاب کنید');l.addWidget(info)
+  specifications=[('name','تغییر نام کالا',[('value','نام کالا','text')]),('purchasePrice','قیمت خرید',[('value','قیمت خرید (تومان)','int')]),('increase','افزایش موجودی',[('value','تعداد خرید جدید','int'),('cost','قیمت خرید هر واحد (تومان)','int')]),('stock','تغییر موجودی',[('value','موجودی','int')]),('profitRateOverride','سود اختصاصی',[('value','درصد سود','percent')]),('commission','کمیسیون',[('value','درصد کمیسیون','percent'),('platform','توسعه پلتفرم اعتباری (%)','percent')]),('basalamCommission','کمیسیون باسلام',[('value','درصد کمیسیون باسلام','percent')])]
   for key,label,fields in specifications:
    page=QWidget();form=QFormLayout(page);controls[key]={}
    for field,text,kind in fields:
     widget=QLineEdit() if kind=='text' else QDoubleSpinBox() if kind=='percent' else QSpinBox()
-    if kind!='text':widget.setRange(0,100 if key=='commission' else 1000 if kind=='percent' else 2000000000);widget.setButtonSymbols(QAbstractSpinBox.NoButtons);widget.setGroupSeparatorShown(True)
+    if kind!='text':widget.setRange(0,99.99 if key=='basalamCommission' else 100 if key=='commission' else 1000 if kind=='percent' else 2000000000);widget.setButtonSymbols(QAbstractSpinBox.NoButtons);widget.setGroupSeparatorShown(True)
     form.addRow(text,widget);controls[key][field]=widget
    if key=='profitRateOverride':default=QCheckBox('استفاده از سود پیش‌فرض');form.addRow(default)
    if key=='commission':credit=QCheckBox('تسویه اعتباری');form.addRow(credit)
@@ -377,7 +382,7 @@ class App(QMainWindow):
   def commit():
    product=selected['product']
    if not product:return
-   if tabs.currentIndex()==6:
+   if tabs.currentIndex()==len(specifications):
     item=supplier_list.currentItem()
     if item is None:info.setText('یک مرجع را انتخاب کنید');return
     previous=get_supplier(self.data,product.get('supplierId'));supplier=get_supplier(self.data,item.data(Qt.UserRole))
@@ -385,6 +390,7 @@ class App(QMainWindow):
     else:product.pop('supplierId',None)
     self.history(product,'تغییر مرجع',previous['name'] if previous else None,supplier['name'] if supplier else None);self.persist();self.render();selection();info.setText(product['name']+' — مرجع ثبت شد');return
    key=specifications[tabs.currentIndex()][0];widget=controls[key]['value'];value=widget.text().strip() if key=='name' else widget.value();before=product['stock'];old=product.get(key)
+   if key=='basalamCommission' and old is None:product.setdefault('confirmedPrices',{})['basalam']=math.ceil(self.target(product)/(1-value/100))
    if key=='name' and not value:info.setText('نام کالا الزامی است');return
    if key=='increase':
     if not value:info.setText('تعداد خرید باید بیشتر از صفر باشد');return
@@ -420,6 +426,12 @@ class App(QMainWindow):
   old=p.get('commission');p.update(v);p['digiMode']='credit' if self.yes('نوع تسویه','محاسبه اعتباری باشد؟') else 'cash'
   if old is None:p['digiConfirmedPrice']=self.price(p,'digikala')
   self.history(p,'کمیسیون',old,p['commission']);self.persist();self.render()
+ def basalam_commission(self,p):
+  d,l=self.dialog('کمیسیون باسلام');form=QFormLayout();l.addLayout(form);rate=QDoubleSpinBox();rate.setRange(0,99.99);rate.setSuffix(' ٪');rate.setButtonSymbols(QAbstractSpinBox.NoButtons);rate.setValue(p.get('basalamCommission') or 0);form.addRow('درصد کمیسیون باسلام',rate);buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel);buttons.button(QDialogButtonBox.Ok).setText('تأیید');buttons.button(QDialogButtonBox.Cancel).setText('لغو');buttons.accepted.connect(d.accept);buttons.rejected.connect(d.reject);l.addWidget(buttons)
+  if d.exec()!=QDialog.Accepted:return
+  old=p.get('basalamCommission');p['basalamCommission']=rate.value()
+  if old is None:p.setdefault('confirmedPrices',{})['basalam']=self.price(p,'basalam')
+  self.history(p,'کمیسیون باسلام',old,p['basalamCommission']);self.persist();self.render()
  def publish(self,p,c):
   if self.yes('ثبت انتشار',f'آیا «{p["name"]}» را در {CHANNELS[c]} منتشر کرده‌اید؟'):
    p.setdefault('publishedChannels',{})[c]=True;p.setdefault('confirmedPrices',{})[c]=self.price(p,c);self.history(p,'انتشار '+CHANNELS[c],False,True);self.persist();self.render()
@@ -530,7 +542,7 @@ class App(QMainWindow):
   if sale:
    self.history(p,'ویرایش فروش',copy.deepcopy(sale),dict(quantity=q.value(),unitPrice=unit,channel=c.currentData()));p['stock']+=sale['quantity']-q.value();sale.update(quantity=q.value(),unitPrice=unit,totalPrice=unit*q.value(),channel=c.currentData(),manualPrice=True);self.record_stock_event(p,'editSale',before)
   else:
-   sale=dict(id=str(uuid.uuid4()),productId=p['id'],productName=p['name'],date=today(),quantity=q.value(),channel=c.currentData(),unitPrice=unit,totalPrice=unit*q.value(),manualPrice=bool(price.text()),purchasePriceAtSale=p['purchasePrice'],feeSnapshot=dict(commission=p.get('commission'),platform=0,digi=copy.deepcopy(self.data['digiFees']),arazmanRate=self.data['arazmanDeductionRate']));self.data['sales'].append(sale);p['stock']-=q.value();self.record_stock_event(p,'sale',before)
+   sale=dict(id=str(uuid.uuid4()),productId=p['id'],productName=p['name'],date=today(),quantity=q.value(),channel=c.currentData(),unitPrice=unit,totalPrice=unit*q.value(),manualPrice=bool(price.text()),purchasePriceAtSale=p['purchasePrice'],feeSnapshot=dict(basalamCommission=p.get('basalamCommission'),commission=p.get('commission'),platform=0,digi=copy.deepcopy(self.data['digiFees']),arazmanRate=self.data['arazmanDeductionRate']));self.data['sales'].append(sale);p['stock']-=q.value();self.record_stock_event(p,'sale',before)
   self.persist();self.render()
  def sale_notice(self,message):
   if hasattr(self,'sale_toast'):self.sale_toast.hide();self.sale_toast.deleteLater()
@@ -564,7 +576,7 @@ class App(QMainWindow):
    try:
     assert product and channel;count=quantity.value();assert 0<count<=product['stock'];unit=int(num(price.text())) if price.text().strip() else self.price(product,channel);assert unit is not None and unit>=0
    except (ValueError,AssertionError):summary.setText('کالا، قیمت یا تعداد فروش معتبر نیست');return
-   sale=dict(id=str(uuid.uuid4()),productId=product['id'],productName=product['name'],date=today(),quantity=count,channel=channel,unitPrice=unit,totalPrice=unit*count,manualPrice=bool(price.text().strip()),purchasePriceAtSale=product['purchasePrice'],feeSnapshot=dict(commission=product.get('commission'),platform=0,digi=copy.deepcopy(self.data['digiFees']),arazmanRate=self.data['arazmanDeductionRate']))
+   sale=dict(id=str(uuid.uuid4()),productId=product['id'],productName=product['name'],date=today(),quantity=count,channel=channel,unitPrice=unit,totalPrice=unit*count,manualPrice=bool(price.text().strip()),purchasePriceAtSale=product['purchasePrice'],feeSnapshot=dict(basalamCommission=product.get('basalamCommission'),commission=product.get('commission'),platform=0,digi=copy.deepcopy(self.data['digiFees']),arazmanRate=self.data['arazmanDeductionRate']))
    before=product['stock'];product['stock']-=count;self.data['sales'].append(sale);self.record_stock_event(product,'sale',before);self.persist();self.render();d.accept();self.sale_notice(fa(count)+' عدد «'+product['name']+'» فروخته شد')
   buttons.accepted.connect(commit);d.exec()
  def profit(self,s):
@@ -572,7 +584,10 @@ class App(QMainWindow):
   f=s['feeSnapshot'];v=s['unitPrice']
   if s['channel']=='digikala':v=net(v,f['commission'],f['platform'],f['digi'])
   elif s['channel']=='arazman':v*=1-f['arazmanRate']/100
-  elif s['channel'] in ['basalam','snappshop']:return None
+  elif s['channel']=='basalam':
+   if f.get('basalamCommission') is None:return None
+   v*=1-f['basalamCommission']/100
+  elif s['channel']=='snappshop':return None
   return rounded((v-s['purchasePriceAtSale'])*s['quantity'])
  def report(self,p):
   d,l=self.dialog('گزارش '+p['name']);d.resize(1120,650);tabs=QTabWidget();tabs.setObjectName('settingsTabs');l.addWidget(tabs);sales=[s for s in self.data['sales'] if s['productId']==p['id']];active=[s for s in sales if not s.get('cancelled')]
@@ -621,7 +636,7 @@ class App(QMainWindow):
    table.resizeRowsToContents();tabs.addTab(table,title)
   events=[e for e in self.data['stockEvents'] if e['productId']==p['id']];names=dict(initial='موجودی اولیه',increase='خرید جدید',set='تغییر موجودی',sale='فروش',editSale='ویرایش فروش',cancelSale='لغو فروش')
   history_table('موجودی و خرید',['تاریخ','رویداد','موجودی قبل','تغییر تعداد','موجودی بعد','خرید هر واحد','میانگین خرید'],[[fa(jd(e['date'])),names.get(e['type'],e['type']),fa(e['before']),fa(e['change']),fa(e['after']),money(e.get('purchasePrice')),money(e.get('averagePurchasePrice'))] for e in reversed(events)])
-  labels={'name':'نام کالا','purchasePrice':'قیمت خرید','stock':'موجودی','commission':'کمیسیون','profitRateOverride':'سود اختصاصی','profitRate':'سود پیش‌فرض','arazmanDeductionRate':'درصد آرازمان','unitPrice':'قیمت واحد','quantity':'تعداد','channel':'روش فروش','totalPrice':'جمع فروش'}
+  labels={'basalamCommission':'کمیسیون باسلام','name':'نام کالا','purchasePrice':'قیمت خرید','stock':'موجودی','commission':'کمیسیون','profitRateOverride':'سود اختصاصی','profitRate':'سود پیش‌فرض','arazmanDeductionRate':'درصد آرازمان','unitPrice':'قیمت واحد','quantity':'تعداد','channel':'روش فروش','totalPrice':'جمع فروش'}
   def display(value,key=''):
    if value is None:return '—'
    if isinstance(value,dict):return '\n'.join(labels.get(k,k)+': '+display(v,k) for k,v in value.items() if k in labels)
