@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime, date
 import jdatetime
 from update_support import build_update_tab, VERSION
+from general_report import show_general_report
 from supplier_support import get_supplier, supplier_details, manage_suppliers, choose_supplier
 from PySide6.QtCore import Qt, QTimer, QObject, QEvent, QRectF, QPropertyAnimation
 from PySide6.QtGui import QColor, QIcon, QPainter, QLinearGradient, QFont, QPen, QBrush, QFontDatabase, QPixmap, QCursor
@@ -203,7 +204,7 @@ class App(QMainWindow):
   for p in self.data['active']+self.data['deleted']:self.baselines(p)
   central=QWidget();self.setCentralWidget(central);self.layout=QVBoxLayout(central)
   nav=QHBoxLayout();nav.setSpacing(12);self.logo=AnimatedLogo(self);self.logo.clicked.connect(lambda:self.section('monitor'));nav.addWidget(self.logo);nav.addStretch()
-  for title,fn in [('مرجع',lambda:manage_suppliers(self)),('کالای اصلاح نشده',self.filter_pending),('سطل آشغال',self.trash),('تنظیمات',self.settings)]:
+  for title,fn in [('گزارش کلی',lambda:show_general_report(self,PersianCalendar,fa,jd,money,today)),('مرجع',lambda:manage_suppliers(self)),('کالای اصلاح نشده',self.filter_pending),('سطل آشغال',self.trash),('تنظیمات',self.settings)]:
    b=self.button(nav,title,fn);b.setObjectName('navButton');b.setCursor(Qt.PointingHandCursor)
   self.layout.addLayout(nav);bar=QHBoxLayout();self.search=QLineEdit();self.search.setPlaceholderText('جستجو بین کالاها');self.search.setMinimumHeight(44);self.search.textChanged.connect(self.search_changed);bar.addWidget(self.search)
   for title,fn,name in [('افزودن کالا',self.add,'addButton'),('ویرایش کالا',self.edit,'editButton'),('حذف کالا',self.remove,'deleteButton')]:
