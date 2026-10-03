@@ -11,6 +11,10 @@ def report_sales(data, start, end):
 def jalali_range(day, mode):
     import jdatetime
     selected = jdatetime.date.fromgregorian(date=date.fromisoformat(day))
+    if mode == 'year':
+        first=jdatetime.date(selected.year,1,1)
+        last=jdatetime.date(selected.year,12,30 if first.isleap() else 29)
+        return first.togregorian().isoformat(),last.togregorian().isoformat()
     if mode == 'day':
         return day, day
     start_day = 15 if mode == 'second' else 1
@@ -31,27 +35,36 @@ def show_general_report(app, Calendar, fa, jd, money, today):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import (QPushButton, QLabel, QHBoxLayout, QButtonGroup,
                                    QTableWidget, QTableWidgetItem, QHeaderView, QWidget, QVBoxLayout,
-                                   QTabWidget, QFormLayout, QLineEdit, QSpinBox, QAbstractSpinBox)
+                                   QTabWidget, QFormLayout, QLineEdit, QSpinBox, QAbstractSpinBox, QDialog)
     dialog, layout = app.dialog('گزارش کلی')
     dialog.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
     dialog.resize(1160, 650)
+    import jdatetime
     state = {'day': today(), 'mode': 'day'}
+    year = QSpinBox()
+    year.setRange(1300, 1600)
+    year.setValue(jdatetime.date.today().year)
+    year.setButtonSymbols(QAbstractSpinBox.NoButtons)
+    year.setPrefix('سال ')
+    year.hide()
     top = QHBoxLayout()
     layout.addLayout(top)
     choose = QPushButton()
     top.addWidget(choose)
     current = QPushButton('امروز')
     top.addWidget(current)
+    top.addWidget(year)
     top.addStretch()
     filters = QHBoxLayout()
     layout.addLayout(filters)
     group = QButtonGroup(dialog)
     group.setExclusive(True)
     for mode, label in [('day', 'روز انتخاب‌شده'), ('month', 'کل ماه'),
-                        ('first', '۱ تا ۱۵ ماه'), ('second', '۱۵ تا پایان ماه')]:
+                        ('first', '۱ تا ۱۵ ماه'), ('second', '۱۵ تا پایان ماه'), ('year', 'سال '+fa(jdatetime.date.today().year))]:
         button = QPushButton(label)
         button.setCheckable(True)
         button.setChecked(mode == 'day')
+        if mode == 'year':year_button = button
         group.addButton(button)
         filters.addWidget(button)
         def select_mode(checked=False, mode=mode):
@@ -68,7 +81,7 @@ def show_general_report(app, Calendar, fa, jd, money, today):
     period.setAlignment(Qt.AlignCenter)
     layout.addWidget(period)
     table = QTableWidget(0, 9)
-    table.setHorizontalHeaderLabels(['تاریخ', 'نام کالا', 'روش فروش', 'تعداد',
+    table.setHorizontalHeaderLabels(['تاریخ', 'نام کالا', 'نحوه فروش', 'تعداد',
                                     'خرید هر واحد', 'فروش هر واحد', 'سود هر واحد',
                                     'سود کل', 'مبلغ کل فروش'])
     table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -82,7 +95,26 @@ def show_general_report(app, Calendar, fa, jd, money, today):
     total.setAlignment(Qt.AlignCenter)
     total.setWordWrap(True)
     total.setStyleSheet('font-size:17px;font-weight:bold;color:#16844a;padding:12px;')
+    stats_row = QHBoxLayout()
+    sales_layout.addLayout(stats_row)
+    stat_values = []
+    dark = app.data.get('theme') in ['سرمه‌ای و مسی','تیره و نئونی']
+    colors = [('#193b30','#a0efbe'),('#17334b','#a6d8ff'),('#352748','#dcc0ff'),('#40321d','#ffe0a3')] if dark else [('#e9f8ee','#247642'),('#eaf3ff','#245c97'),('#f3ecfb','#7952a3'),('#fff5e4','#946b22')]
+    for caption, (background, foreground) in zip(['مجموع سود','مجموع فروش','تعداد فروخته‌شده','تعداد ثبت فروش'],colors):
+        card = QWidget()
+        card.setStyleSheet('QWidget{background:'+background+';border-radius:12px;} QLabel{background:transparent;color:'+foreground+';}')
+        card_layout = QVBoxLayout(card)
+        heading = QLabel(caption)
+        heading.setAlignment(Qt.AlignCenter)
+        value = QLabel()
+        value.setAlignment(Qt.AlignCenter)
+        value.setStyleSheet('font-size:17px;font-weight:bold;padding:8px;')
+        card_layout.addWidget(heading)
+        card_layout.addWidget(value)
+        stat_values.append(value)
+        stats_row.addWidget(card,1)
     sales_layout.addWidget(total)
+    total.setStyleSheet('font-size:12px;padding:3px;')
     CHANNELS = {'digikala':'دیجیکالا','arazman':'آرازمان','basalam':'باسلام','snappshop':'اسنپ شاپ','inperson':'حضوری','instagram':'اینستاگرام','rubika':'روبیکا','telegram':'تلگرام','bale':'بله'}
     def rounded(value):
         import math
@@ -136,7 +168,11 @@ def show_general_report(app, Calendar, fa, jd, money, today):
 
     def refresh():
         choose.setText('انتخاب تاریخ: ' + fa(jd(state['day'])))
-        start, end = jalali_range(state['day'], state['mode'])
+        choose.setVisible(state['mode']=='day')
+        current.setVisible(state['mode']=='day')
+        year.setVisible(state['mode']=='year')
+        filter_day = jdatetime.date(year.value(),1,1).togregorian().isoformat() if state['mode']=='year' else state['day']
+        start, end = jalali_range(filter_day, state['mode'])
         period.setText('از ' + fa(jd(start)) + ' تا ' + fa(jd(end)))
         rows = report_sales(app.data, start, end)
         table.setRowCount(len(rows))
@@ -159,12 +195,13 @@ def show_general_report(app, Calendar, fa, jd, money, today):
                 item.setToolTip(value)
                 table.setItem(row, column, item)
             table.setRowHeight(row, 60)
-        text = 'مجموع سود: ' + money(sum(profits)) + '   |   تعداد فروش: ' + fa(sum(s['quantity'] for s in rows))
-        if not rows:
-            text += '   |   فروشی در این بازه ثبت نشده است.'
+        for widget,value in zip(stat_values,[money(sum(profits)),money(sum(s['totalPrice'] for s in rows)),fa(sum(s['quantity'] for s in rows))+' عدد',fa(len(rows))]):
+            widget.setText(value)
+        text = 'فروشی در این بازه ثبت نشده است.' if not rows else ''
         if unknown:
             text += '\n' + fa(unknown) + ' ثبت فاقد اطلاعات محاسبه سود است و در مجموع سود لحاظ نشده.'
         total.setText(text)
+        total.setVisible(bool(text))
         purchases = sorted((p for p in app.data.get('generalPurchases', []) if start <= p['date'] <= end), key=lambda p:p['date'])
         buy_table.setRowCount(len(purchases))
         for row, purchase in enumerate(purchases):
@@ -182,8 +219,12 @@ def show_general_report(app, Calendar, fa, jd, money, today):
         calendar = Calendar(dialog)
         calendar.value = state['day']
         calendar.anchor = jdatetime.date.fromgregorian(date=date.fromisoformat(state['day'])).replace(day=1)
+        def select_date(selected):
+            calendar.value = selected.togregorian().isoformat()
+            calendar.accept()
+        calendar.choose = select_date
         calendar.draw()
-        if calendar.exec() == calendar.Accepted:
+        if calendar.exec() == QDialog.Accepted:
             state['day'] = calendar.value
             refresh()
 
@@ -191,6 +232,10 @@ def show_general_report(app, Calendar, fa, jd, money, today):
         state['day'] = today()
         refresh()
 
+    def year_changed(value):
+        year_button.setText('سال '+fa(value))
+        refresh()
+    year.valueChanged.connect(year_changed)
     choose.clicked.connect(choose_day)
     current.clicked.connect(use_today)
     refresh()
