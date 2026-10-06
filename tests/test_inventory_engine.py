@@ -43,5 +43,13 @@ class InventoryTests(unittest.TestCase):
  def test_historic_sale_edit_keeps_original_cost(self):
   s=self.sell(self.p,1,[('blue',1)]);E.add_purchase(self.d,self.m,[dict(variantId='blue',quantity=9,unitCost=300)],D)
   self.sell(self.p,2,[('blue',2)],s);self.assertEqual(s['purchasePriceAtSale'],100)
+ def test_v27_reset_keeps_suppliers_and_runs_once(self):
+  with tempfile.TemporaryDirectory() as folder:
+   d=copy.deepcopy(self.d);suppliers=[dict(id='supplier-1',name='مرجع',phone='09120000000',address='آدرس')];d['suppliers']=suppliers;d['history']=[{'old':True}]
+   E.initialize(d,Path(folder))
+   for key in ['active','deleted','mothers','purchases','sales','inventoryAdjustments','history']:self.assertEqual(d[key],[])
+   self.assertEqual(d['suppliers'],suppliers);self.assertTrue(d['businessReset27'])
+   saved=__import__('json').loads(next((Path(folder)/'backups').glob('before-reset-v2.7-*.json')).read_text());self.assertEqual(saved['suppliers'],suppliers);self.assertTrue(saved['purchases'])
+   d['active']=[{'name':'new'}];E.initialize(d,Path(folder));self.assertEqual(d['active'],[{'name':'new'}]);self.assertEqual(len(list((Path(folder)/'backups').glob('*.json'))),1)
 if __name__=='__main__':unittest.main()
 
