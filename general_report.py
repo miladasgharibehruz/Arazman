@@ -122,49 +122,9 @@ def show_general_report(app, Calendar, fa, jd, money, today):
     buy_page = QWidget()
     buy_layout = QVBoxLayout(buy_page)
     tabs.addTab(buy_page, 'خرید')
-    form = QFormLayout()
-    buy_layout.addLayout(form)
-    name = QLineEdit()
-    name.setPlaceholderText('نام کالای خریداری‌شده')
-    quantity_input, cost_input = QSpinBox(), QSpinBox()
-    quantity_input.setRange(1, 2000000000)
-    cost_input.setRange(0, 2000000000)
-    for control in [quantity_input, cost_input]:
-        control.setButtonSymbols(QAbstractSpinBox.NoButtons)
-        control.setGroupSeparatorShown(True)
-    form.addRow('نام کالا', name)
-    form.addRow('تعداد خرید', quantity_input)
-    form.addRow('قیمت خرید هر واحد (تومان)', cost_input)
-    buy_notice = QLabel('تاریخ خرید، همان تاریخ انتخاب‌شده بالای پنجره است.')
-    buy_notice.setWordWrap(True)
-    buy_layout.addWidget(buy_notice)
-    add = QPushButton('افزودن خرید')
-    buy_layout.addWidget(add)
-    buy_table = QTableWidget(0, 5)
-    buy_table.setHorizontalHeaderLabels(['تاریخ', 'نام کالا', 'تعداد', 'خرید هر واحد', 'مجموع خرید'])
-    buy_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-    buy_table.verticalHeader().hide()
-    buy_table.setEditTriggers(QTableWidget.NoEditTriggers)
-    buy_table.setSelectionMode(QTableWidget.NoSelection)
-    buy_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-    buy_layout.addWidget(buy_table, 1)
-    buy_total = QLabel()
-    buy_total.setAlignment(Qt.AlignCenter)
-    buy_total.setStyleSheet('font-size:17px;font-weight:bold;padding:12px;')
-    buy_layout.addWidget(buy_total)
-    def add_purchase():
-        import uuid
-        if not name.text().strip():
-            buy_notice.setText('نام کالا را وارد کنید.')
-            return
-        app.data.setdefault('generalPurchases', []).append(dict(id=str(uuid.uuid4()), date=state['day'], productName=name.text().strip(), quantity=quantity_input.value(), unitPrice=cost_input.value()))
-        app.persist()
-        name.clear()
-        quantity_input.setValue(1)
-        cost_input.setValue(0)
-        buy_notice.setText('خرید ثبت شد؛ موجودی و قیمت‌های مانیتور تغییر نکردند.')
-        refresh()
-    add.clicked.connect(add_purchase)
+    from inventory_ui import purchase_panel, sale_channel, make_copyable
+    api = app.inventory_api
+    purchase_refresh = purchase_panel(app, api, buy_layout)
 
     def refresh():
         choose.setText('انتخاب تاریخ: ' + fa(jd(state['day'])))
@@ -185,7 +145,7 @@ def show_general_report(app, Calendar, fa, jd, money, today):
                 profits.append(profit)
             quantity = sale['quantity']
             values = [fa(jd(sale['date'])), sale.get('productName', '—'),
-                      CHANNELS.get(sale['channel'], sale['channel']), fa(quantity),
+                      sale_channel(sale, api), fa(quantity),
                       money(sale.get('purchasePriceAtSale')), money(sale['unitPrice']),
                       money(rounded(profit / quantity) if profit is not None and quantity else None),
                       money(profit), money(sale['totalPrice'])]
@@ -193,8 +153,10 @@ def show_general_report(app, Calendar, fa, jd, money, today):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignCenter)
                 item.setToolTip(value)
+                table.removeCellWidget(row, column)
                 table.setItem(row, column, item)
             table.setRowHeight(row, 60)
+        make_copyable(table)
         for widget,value in zip(stat_values,[money(sum(profits)),money(sum(s['totalPrice'] for s in rows)),fa(sum(s['quantity'] for s in rows))+' عدد',fa(len(rows))]):
             widget.setText(value)
         text = 'فروشی در این بازه ثبت نشده است.' if not rows else ''
@@ -202,17 +164,7 @@ def show_general_report(app, Calendar, fa, jd, money, today):
             text += '\n' + fa(unknown) + ' ثبت فاقد اطلاعات محاسبه سود است و در مجموع سود لحاظ نشده.'
         total.setText(text)
         total.setVisible(bool(text))
-        purchases = sorted((p for p in app.data.get('generalPurchases', []) if start <= p['date'] <= end), key=lambda p:p['date'])
-        buy_table.setRowCount(len(purchases))
-        for row, purchase in enumerate(purchases):
-            values = [fa(jd(purchase['date'])), purchase['productName'], fa(purchase['quantity']), money(purchase['unitPrice']), money(purchase['quantity'] * purchase['unitPrice'])]
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setTextAlignment(Qt.AlignCenter)
-                item.setToolTip(value)
-                buy_table.setItem(row, column, item)
-            buy_table.setRowHeight(row, 48)
-        buy_total.setText('مجموع خرید: ' + money(sum(p['quantity'] * p['unitPrice'] for p in purchases)))
+        purchase_refresh(start, end)
 
     def choose_day():
         import jdatetime

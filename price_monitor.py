@@ -199,7 +199,9 @@ class App(QMainWindow):
   super().__init__();self.setWindowTitle('Arazman');self.resize(1500,850)
   try:self.data=json.loads(FILE.read_text(encoding='utf8'))
   except (OSError,ValueError):self.data={}
-  for k,v in dict(active=[],deleted=[],sales=[],stockEvents=[],history=[],suppliers=[],profitRate=25,arazmanDeductionRate=14,digiFees=FEES,theme='روشن و مینیمال').items():self.data.setdefault(k,copy.deepcopy(v))
+  for k,v in dict(active=[],deleted=[],sales=[],stockEvents=[],history=[],suppliers=[],profitRate=25,arazmanDeductionRate=6.6,digiFees=FEES,theme='روشن و مینیمال').items():self.data.setdefault(k,copy.deepcopy(v))
+  import inventory_engine as E
+  E.initialize(self.data,ROOT);self.data['arazmanDeductionRate']=6.6;E.sync(self.data);self.persist()
   self.page=0;self.mode='monitor';self.pending=False
   for p in self.data['active']+self.data['deleted']:self.baselines(p)
   central=QWidget();self.setCentralWidget(central);self.layout=QVBoxLayout(central)
@@ -478,6 +480,7 @@ class App(QMainWindow):
    notice.setText(message);notice.adjustSize();notice.move((d.width()-notice.width())//2,bar.height()+tabs.tabBar().height()+24);notice.show();notice.raise_();notice_timer.start(2200)
   for label,key in [('سود پیش‌فرض','profitRate'),('آرازمان','arazmanDeductionRate')]:
    page=QWidget();layout=QVBoxLayout(page);layout.setContentsMargins(24,20,24,20);form=QFormLayout();layout.addLayout(form);value=QDoubleSpinBox();value.setRange(0,99.99 if key=='arazmanDeductionRate' else 1000);value.setSuffix(' ٪');value.setValue(self.data[key]);form.addRow('درصد کسر از مبلغ فروش' if key=='arazmanDeductionRate' else 'درصد سود پیش‌فرض',value);layout.addStretch();save=QPushButton('ثبت تغییرات');layout.addWidget(save)
+   if key=='arazmanDeductionRate':value.setDisabled(True);save.setDisabled(True)
    def save_rate(checked=False,key=key,value=value):
     old=self.data[key];self.data[key]=value.value()
     if old!=value.value():
@@ -494,7 +497,7 @@ class App(QMainWindow):
    if values['processing_min']>values['processing_max']:notify('کف هزینه نباید بیشتر از سقف باشد');return
    self.data['digiFees']=values;self.persist();self.render();notify('تنظیمات دیجیکالا تغییر کرد')
   save.clicked.connect(save_fees);tabs.addTab(page,'دیجیکالا')
-  for label in ['اسنپ شاپ','باسلام']:
+  for label in ['اسنپ شاپ']:
    placeholder=QWidget();tabs.addTab(placeholder,label)
   page=QWidget();layout=QGridLayout(page);layout.setContentsMargins(24,24,24,24)
   for index,theme in enumerate(THEMES):
@@ -656,6 +659,8 @@ class App(QMainWindow):
   try:self.persist();backup=ROOT/'backups';backup.mkdir(exist_ok=True);(backup/(datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.json')).write_text(json.dumps(self.data,ensure_ascii=False,indent=2),encoding='utf8')
   except OSError as ex:QMessageBox.critical(self,'ذخیره‌سازی',str(ex));event.ignore();return
   event.accept()
+from inventory_ui import install
+install(App,globals())
 if __name__=='__main__':
  if sys.platform=='win32':
   import ctypes
