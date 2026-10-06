@@ -129,7 +129,7 @@ def purchase_dialog(app,api,product=None,existing=None):
  button.clicked.connect(commit);d.exec()
 
 def edit_product(app,api):
- d,l=app.dialog('ویرایش کالا');d.resize(1020,680);search,listing=app.product_picker(l);tabs=QTabWidget();tabs.setObjectName('settingsTabs');l.addWidget(tabs);selected={'p':None};notice=QLabel();notice.setWordWrap(True);l.addWidget(notice)
+ d,l=app.dialog('ویرایش کالا');d.resize(1080,min(860,QApplication.primaryScreen().availableGeometry().height()-40));search,listing=app.product_picker(l);tabs=QTabWidget();tabs.setObjectName('settingsTabs');l.addWidget(tabs);selected={'p':None};notice=QLabel();notice.setWordWrap(True);l.addWidget(notice)
  def page(title):w=QWidget();lay=QVBoxLayout(w);tabs.addTab(w,title);return lay
  basic=page('مشخصات');form=QFormLayout();basic.addLayout(form);name=QLineEdit();supplier=supplier_combo(app);form.addRow('نام مدل فروش',name);form.addRow('مرجع',supplier)
  pricing=page('سود اختصاصی');pf=QFormLayout();pricing.addLayout(pf);rate=spin(25,True);amount=spin();use_default=QCheckBox('استفاده از سود پیش‌فرض');pf.addRow('درصد سود',rate);pf.addRow('قیمت فروش دلخواه (تومان)',amount);pf.addRow(use_default);price_mode={'value':'rate'}
@@ -150,9 +150,10 @@ def edit_product(app,api):
  fee_page=page('پردازش اختصاصی دیجیکالا');ff=QFormLayout();fee_page.addLayout(ff);feecontrols={};inherit={}
  for key,caption in [('processing_percent','درصد مجموع پردازش'),('processing_min','کف مجموع پردازش (تومان)'),('processing_max','سقف مجموع پردازش (تومان)')]:
   row=QWidget();rl=QHBoxLayout(row);w=spin(0,key.endswith('percent'));check=QCheckBox('عمومی');check.toggled.connect(w.setDisabled);rl.addWidget(w);rl.addWidget(check);ff.addRow(caption,row);feecontrols[key]=w;inherit[key]=check
- inventory=page('موجودی / تنوع');it=table(['رنگ','سایز','موجودی واقعی','میانگین خرید واحد']);inventory.addWidget(it);inventory.addWidget(QLabel('تغییر تعداد فقط اصلاح موجودی است؛ برای خرید جدید از ثبت خرید استفاده کنید.'))
+ inventory=page('موجودی / تنوع');it=table(['رنگ','سایز','موجودی واقعی','میانگین خرید واحد']);it.setMinimumHeight(225);inventory.addWidget(it,1);inventory.addWidget(QLabel('تغییر تعداد فقط اصلاح موجودی است؛ برای خرید جدید از ثبت خرید استفاده کنید.'))
  purchase=QPushButton('ثبت خرید و افزایش موجودی');inventory.addWidget(purchase);packs=QLineEdit();packs.setPlaceholderText('تعداد داخل مدل فروش جدید؛ مثلاً 5');inventory.addWidget(packs);newpack=QPushButton('افزودن مدل فروش');inventory.addWidget(newpack)
  addvariant=QPushButton('افزودن رنگ / سایز جدید');inventory.addWidget(addvariant)
+ inventory_widget=tabs.widget(4);tabs.removeTab(4);inventory_scroll=QScrollArea();inventory_scroll.setWidgetResizable(True);inventory_scroll.setFrameShape(QScrollArea.NoFrame);inventory_scroll.setWidget(inventory_widget);tabs.addTab(inventory_scroll,'موجودی / تنوع')
  save=QPushButton('ثبت تغییرات سربرگ فعلی');l.addWidget(save);tabs.setEnabled(False);save.setEnabled(False)
  def choose(*_):
   item=listing.currentItem();p=next((p for p in app.data['active'] if item and item.checkState()==Qt.Checked and p['id']==item.data(Qt.UserRole)),None);selected['p']=p;tabs.setEnabled(bool(p));save.setEnabled(bool(p))
@@ -169,18 +170,21 @@ def edit_product(app,api):
  def buy():
   if selected['p']:purchase_dialog(app,api,selected['p']);choose()
  purchase.clicked.connect(buy)
- def addpack():
+ def addpack(checked=False):
   try:
-   p=selected['p'];size=int(api['num'](packs.text()));assert p and size>0
+   p=selected['p']
+   if not p:raise ValueError('ابتدا کالا را انتخاب کنید.')
+   if not packs.text().strip():raise ValueError('تعداد داخل مدل فروش جدید را وارد کنید.')
+   size=int(api['num'](packs.text()));assert size>0
    m=E.mother(app.data,p)
    if any(x.get('motherId')==m['id'] and x['packSize']==size for x in app.data['active']):raise ValueError('این مدل فروش وجود دارد.')
    fresh=package(app,m,size,api);fresh.update({key:copy.deepcopy(p[key]) for key in ['supplierId','commission','platformRate','basalamCommission'] if key in p});E.sync(app.data);app.baselines(fresh);fresh['initialPendingPrices']=['arazman'];app.persist();app.render();notice.setText('مدل فروش اضافه شد.')
   except (ValueError,AssertionError) as ex:notice.setText(str(ex) or 'عدد معتبر وارد کنید.')
  newpack.clicked.connect(addpack)
- def add_variant():
+ def add_variant(checked=False):
   p=selected['p']
   if not p:return
-  child,layout=app.dialog('افزودن رنگ / سایز');f=QFormLayout();layout.addLayout(f);color=QLineEdit();size=QLineEdit();f.addRow('رنگ',color);f.addRow('سایز',size);error=QLabel();layout.addWidget(error);button=QPushButton('ثبت تنوع');layout.addWidget(button)
+  child,layout=app.dialog('افزودن رنگ / سایز');child.setParent(d,Qt.Dialog|Qt.FramelessWindowHint);child.resize(560,300);notice.clear();f=QFormLayout();layout.addLayout(f);color=QLineEdit();size=QLineEdit();f.addRow('رنگ',color);f.addRow('سایز',size);error=QLabel();layout.addWidget(error);button=QPushButton('ثبت تنوع');layout.addWidget(button)
   def save_variant():
    m=E.mother(app.data,p);key=(color.text().strip(),size.text().strip())
    if not any(key) or any((v.get('color',''),v.get('size',''))==key for v in m['variants']):error.setText('رنگ یا سایز جدید و غیرتکراری وارد کنید.');return
@@ -222,6 +226,13 @@ def edit_product(app,api):
   except (ValueError,TypeError) as ex:notice.setText(str(ex))
  save.clicked.connect(commit);d.exec()
 
+def settlement_price(app,api,p,channel,mode='cash'):
+ # Table uses cash Digikala; credit must solve for the same net target.
+ if channel=='digikala':
+  if p.get('commission') is None:return None
+  return api['solve'](app.target(p),p['commission'],p.get('platformRate',0) if mode=='credit' else 0,E.fees(app.data,p))
+ return app.price(p,channel)
+
 def sale_dialog(app,api,preset=None,existing=None):
  d,l=app.dialog('ویرایش فروش' if existing else 'ثبت فروش');d.setWindowFlags(Qt.Dialog|Qt.FramelessWindowHint);d.resize(980,660);l.addWidget(QLabel('تاریخ: '+api['fa'](api['jd'](existing['date'] if existing else api['today']()))));search,listing=app.product_picker(l);state={'p':None};f=QFormLayout();l.addLayout(f);q=spin(1);q.setMinimum(1);channel=QComboBox();price=QLineEdit();price.setPlaceholderText('اختیاری؛ قیمت جدول');f.addRow('تعداد بسته فروخته‌شده',q);f.addRow('نحوه فروش',channel);f.addRow('قیمت هر بسته (تومان)',price);summary=QLabel();summary.setWordWrap(True);l.addWidget(summary);t=table(['رنگ / سایز','موجودی واحد پایه','تعداد واحد پایه در این فروش']);l.addWidget(t);notice=QLabel();notice.setWordWrap(True);l.addWidget(notice);save=QPushButton('ثبت فروش');l.addWidget(save)
  def choose(*_):
@@ -238,7 +249,7 @@ def sale_dialog(app,api,preset=None,existing=None):
  def refresh(*_):
   p=state['p'];choice=channel.currentData().split('|') if channel.currentData() else None
   if p and choice:
-   needed=q.value()*p['packSize'];summary.setText('قیمت جدول: '+api['money'](app.price(p,choice[0]))+' | تعداد لازم: '+api['fa'](needed)+' واحد پایه')
+   needed=q.value()*p['packSize'];summary.setText('قیمت جدول: '+api['money'](settlement_price(app,api,p,*choice))+' | تعداد لازم: '+api['fa'](needed)+' واحد پایه')
    if t.rowCount()==1:t.item(0,2).setText(str(needed))
  channel.currentIndexChanged.connect(refresh);q.valueChanged.connect(refresh);listing.currentItemChanged.connect(choose)
  if preset:search.setText(preset['name']);search.setDisabled(True);listing.hide()
@@ -252,7 +263,7 @@ def sale_dialog(app,api,preset=None,existing=None):
     count=int(api['num'](t.item(r,2).text()))
     if count<0:raise ValueError('تعداد منفی مجاز نیست.')
     if count:alloc.append(dict(variantId=v['id'],quantity=count))
-   unit=int(api['num'](price.text())) if price.text().strip() else app.price(p,choice[0])
+   unit=int(api['num'](price.text())) if price.text().strip() else settlement_price(app,api,p,*choice)
    if unit is None or unit<0:raise ValueError('قیمت معتبر نیست.')
    c,mode=choice;fees=copy.deepcopy(existing['feeSnapshot']) if existing else dict(commission=p.get('commission'),creditRate=p.get('platformRate',0),basalamCommission=p.get('basalamCommission'),digi=E.fees(app.data,p),arazmanRate=6.6)
    fees['platform']=fees.get('creditRate',0) if c=='digikala' and mode=='credit' else 0;fees['arazmanRate']=6.6 if mode=='credit' else 0
@@ -310,7 +321,7 @@ class Donut(QWidget):
   p.setPen(self.palette().windowText().color());p.drawText(rect,Qt.AlignCenter,'ترکیب قیمت');p.end()
 
 def breakdown(app,api,p,c,mode='cash'):
- price=app.price(p,c);cost=p['purchasePrice'];parts=[('قیمت خرید',cost,'#608ccc')];fees=[]
+ price=settlement_price(app,api,p,c,mode);cost=p['purchasePrice'];parts=[('قیمت خرید',cost,'#608ccc')];fees=[]
  if c=='digikala':
   cfg=E.fees(app.data,p);processing=min(cfg['processing_max'],max(cfg['processing_min'],api['rounded'](price*cfg['processing_percent']/100)));commission=api['rounded'](price*p['commission']/100);credit=api['rounded'](price*p.get('platformRate',0)/100) if mode=='credit' else 0;tax=api['rounded']((commission+credit+cfg['label_cost']+processing/2)*cfg['tax_percent']/100)
   fees=[('کمیسیون نقدی',commission,'#b57cc7'),('اضافه اعتباری',credit,'#e89c59'),('پردازش مشمول مالیات',processing/2,'#5cb9bc'),('پردازش غیرمشمول مالیات',processing/2,'#39949a'),('لیبل',cfg['label_cost'],'#cebb65'),('مالیات خدمات',tax,'#d47689')]
@@ -383,7 +394,7 @@ def product_report(app,api,p):
  tabs.currentChanged.connect(refresh_summary);d.exec()
 
 def make_copyable(t):
- if t.editTriggers()!=QTableWidget.NoEditTriggers:return
+ if t.editTriggers()!=QTableWidget.NoEditTriggers or t.property('keepItemSelection'):return
  for r in range(t.rowCount()):
   for c in range(t.columnCount()):
    item=t.item(r,c)
@@ -395,6 +406,7 @@ def make_copyable(t):
 class CopySupport(QObject):
  def eventFilter(self,obj,event):
   if event.type()==QEvent.Show and isinstance(obj,QTableWidget):make_copyable(obj)
+  if event.type()==QEvent.Show and isinstance(obj,QPushButton):obj.setAutoDefault(False);obj.setDefault(False)
   if event.type()==QEvent.Show and isinstance(obj,QLabel):obj.setTextInteractionFlags(Qt.TextSelectableByMouse|Qt.TextSelectableByKeyboard)
   if event.type()==QEvent.ContextMenu and isinstance(obj,(QPushButton,QLabel,QTableWidget)):
    text=obj.text() if isinstance(obj,(QPushButton,QLabel)) else '\n'.join(i.text() for i in obj.selectedItems())
@@ -453,14 +465,15 @@ def install(App,api):
  def render(self):
   E.sync(self.data);original_render(self);entries=self.data['deleted'] if self.mode=='deleted' else self.data['active'];entries=[p for p in entries if api['matches'](p['name'],self.search.text()) and (not self.pending or any(self.pending_price(p,c) for c in api['CHANNELS']))];pages=max(1,math.ceil(len(entries)/10))
   for r,p in enumerate(entries[self.page*10:self.page*10+10]):
-   stock=QWidget();vl=QVBoxLayout(stock);vl.setContentsMargins(2,2,2,2);vl.setSpacing(2);count=QLabel(api['fa'](p['stock']));count.setAlignment(Qt.AlignCenter);small=QLabel('سود '+api['fa'](round(E.effective_rate(self.data,p),2))+'٪');small.setAlignment(Qt.AlignCenter);small.setStyleSheet('font-size:10px;background:transparent;');vl.addWidget(count);vl.addWidget(small);self.table.setCellWidget(r,3,stock)
+   stock=QWidget();vl=QVBoxLayout(stock);vl.setContentsMargins(2,2,2,2);vl.setSpacing(2);count=QLabel(api['fa'](p['stock']));count.setAlignment(Qt.AlignCenter);count.setProperty('stockPrimary',True);count.setStyleSheet('font-size:19px;font-weight:700;background:transparent;');small=QLabel(api['fa'](round(E.effective_rate(self.data,p),2))+'٪');small.setProperty('stockSecondary',True);small.setAlignment(Qt.AlignCenter);small.setStyleSheet('font-size:9px;background:transparent;');vl.addWidget(count);vl.addWidget(small);self.table.setCellWidget(r,3,stock)
    for col,c in enumerate(api['CHANNELS'],5):
     v=self.price(p,c)
     if v is None:continue
     if c not in ['digikala','arazman','basalam'] and not self.pending_price(p,c):continue
-    holder=QWidget();hl=QHBoxLayout(holder);hl.setContentsMargins(1,1,1,1);hl.setSpacing(1);button=QPushButton(api['money'](v).replace(' تومان','\nتومان'));button.setStyleSheet('padding:3px 1px;font-size:11px;');button.clicked.connect(lambda checked=False,p=p,c=c:price_details(self,api,p,c));hl.addWidget(button,1)
+    holder=QWidget();holder.setStyleSheet('background:'+api['THEMES'][self.data['theme']][1]+';');hl=QHBoxLayout(holder);hl.setContentsMargins(0,0,0,0);hl.setSpacing(1);from price_visuals import PriceSurface
+    button=PriceSurface(api['money'](v),self.data['theme'],api['THEMES'],self.pending_price(p,c));button.clicked.connect(lambda checked=False,p=p,c=c:__import__('price_visuals').show_details(self,api,p,c));hl.addWidget(button,1)
     if self.pending_price(p,c):
-     button.setObjectName('pendingPrice');tick=QPushButton('✓');tick.setFixedWidth(23);tick.setStyleSheet('padding:3px 0;');tick.setObjectName('pendingPrice');tick.clicked.connect(lambda checked=False,p=p,c=c:self.confirm_price(p,c));hl.addWidget(tick)
+     tick=QPushButton('✓');tick.setFixedWidth(23);tick.setStyleSheet('padding:3px 0;');tick.setObjectName('pendingPrice');tick.clicked.connect(lambda checked=False,p=p,c=c:self.confirm_price(p,c));hl.addWidget(tick)
     if c in ['digikala','arazman','basalam']:
      _,parts=breakdown(self,api,p,c,'credit' if c=='arazman' else 'cash');button.setToolTip('\n'.join(title+': '+api['money'](value) for title,value,_ in parts)+'\nبرای نمودار و شرح کلیک کنید')
     self.table.setCellWidget(r,col,holder)

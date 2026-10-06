@@ -83,11 +83,10 @@ def adjust(data,m,quantities):
  if lines:transact(data,'inventoryAdjustments',dict(id=uid(),motherId=m['id'],kind='adjust',date=date.today().isoformat(),createdAt=stamp(),lines=lines))
 
 def initialize(data,root):
- if data.get('inventorySchema')==2:return
- # The user authorized a one-time reset. Persist a complete backup before mutation.
- if any(data.get(k) for k in ['active','deleted','sales','history','stockEvents','suppliers','generalPurchases']):
-  import json
-  folder=root/'backups';folder.mkdir(parents=True,exist_ok=True)
-  (folder/('before-inventory-v2-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.json')).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf8')
- for k in ['active','deleted','sales','history','stockEvents','suppliers','generalPurchases','mothers','purchases','inventoryAdjustments']:data[k]=[]
- data.update(inventorySchema=2,arazmanDeductionRate=6.6)
+ if data.get('inventorySchema')==2 and data.get('businessReset27'):return
+ # Explicitly requested V2.7 one-time reset; keep the supplier directory.
+ import json
+ folder=root/'backups';folder.mkdir(parents=True,exist_ok=True)
+ (folder/('before-reset-v2.7-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.json')).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf8')
+ for k in ['active','deleted','sales','history','stockEvents','generalPurchases','mothers','purchases','inventoryAdjustments']:data[k]=[]
+ data.setdefault('suppliers',[]);data.update(inventorySchema=2,businessReset27=True,arazmanDeductionRate=6.6)
