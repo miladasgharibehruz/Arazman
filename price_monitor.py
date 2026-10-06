@@ -87,7 +87,6 @@ class HoverTable(QTableWidget):
     if widget:
      self.hover_widgets.append((widget,widget.styleSheet()));widget.setStyleSheet(widget.styleSheet()+';font-size:13px;font-weight:bold;'+('background:'+self.hover_color.name()+';' if column==14 else ''))
      for label in widget.findChildren(QLabel):
-      if label.property('stockPrimary') or label.property('stockSecondary'):continue
       self.hover_widgets.append((label,label.styleSheet()));label.setStyleSheet(label.styleSheet()+';font-size:13px;font-weight:bold;')
   self.viewport().update()
 class AnimatedLogo(QPushButton):

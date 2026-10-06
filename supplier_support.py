@@ -38,7 +38,7 @@ def supplier_details(supplier):
                       'آدرس: ' + (supplier.get('address') or '—')])
 
 
-def _window(app, title, width=980, height=680):
+def _window(app, title, width=760, height=560):
     from PySide6.QtCore import Qt
     dialog, layout = app.dialog(title)
     dialog.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
@@ -48,35 +48,46 @@ def _window(app, title, width=980, height=680):
 
 def _directory(app, layout):
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView, QLabel
-    search = QLineEdit(); search.setPlaceholderText('جستجو بین مراجع')
-    listing = QTableWidget(0,3); listing.setProperty('keepItemSelection',True)
-    listing.setHorizontalHeaderLabels(['نام مرجع','شماره تماس','آدرس'])
-    listing.setEditTriggers(QTableWidget.NoEditTriggers); listing.setSelectionBehavior(QTableWidget.SelectRows)
-    listing.setSelectionMode(QTableWidget.SingleSelection); listing.verticalHeader().hide()
-    listing.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeToContents)
-    listing.horizontalHeader().setSectionResizeMode(1,QHeaderView.ResizeToContents)
-    listing.horizontalHeader().setSectionResizeMode(2,QHeaderView.Stretch)
-    listing.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff); listing.setWordWrap(True)
-    details = QLabel(); layout.addWidget(search); layout.addWidget(listing,1); layout.addWidget(details)
+    from PySide6.QtWidgets import QLineEdit, QListWidget, QListWidgetItem, QLabel
+    search = QLineEdit()
+    search.setPlaceholderText('جستجو بین مراجع')
+    listing = QListWidget()
+    listing.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    details = QLabel('یک مرجع را انتخاب کنید.')
+    details.setWordWrap(True)
+    details.setTextFormat(Qt.PlainText)
+    layout.addWidget(search)
+    layout.addWidget(listing, 1)
+    layout.addWidget(details)
+
     def refresh(selected=None):
-        listing.setRowCount(0); query=search.text().strip().casefold()
-        for supplier in app.data.get('suppliers',[]):
-            if query and not any(query in supplier.get(k,'').casefold() for k in ['name','phone','address']):continue
-            row=listing.rowCount();listing.insertRow(row)
-            for col,key in enumerate(['name','phone','address']):
-                item=QTableWidgetItem(supplier.get(key,'') or '—');item.setData(Qt.UserRole,supplier['id']);item.setTextAlignment(Qt.AlignVCenter|Qt.AlignRight);listing.setItem(row,col,item)
-            listing.setRowHeight(row,72)
-            if supplier['id']==selected:listing.setCurrentCell(row,0);listing.selectRow(row)
-        details.setText('مرجعی پیدا نشد.' if query and not listing.rowCount() else 'هنوز مرجعی ثبت نشده است.' if not listing.rowCount() else '')
+        listing.clear()
+        query = search.text().strip().casefold()
+        for supplier in app.data.get('suppliers', []):
+            if query and query not in supplier['name'].casefold():
+                continue
+            item = QListWidgetItem(supplier['name'])
+            item.setData(Qt.UserRole, supplier['id'])
+            item.setToolTip(supplier_details(supplier))
+            listing.addItem(item)
+            if supplier['id'] == selected:
+                listing.setCurrentItem(item)
+        if not listing.count():
+            details.setText('مرجعی پیدا نشد.' if query else 'هنوز مرجعی ثبت نشده است.')
+
     def current():
-        item=listing.currentItem();return get_supplier(app.data,item.data(Qt.UserRole)) if item else None
-    search.textChanged.connect(lambda _:refresh());refresh();return listing,refresh,current
+        item = listing.currentItem()
+        return get_supplier(app.data, item.data(Qt.UserRole)) if item else None
+
+    listing.currentItemChanged.connect(lambda *_: details.setText(supplier_details(current())))
+    search.textChanged.connect(lambda _: refresh())
+    refresh()
+    return listing, refresh, current
 
 
 def choose_supplier(app, product):
     from PySide6.QtWidgets import QPushButton
-    dialog, layout = _window(app, 'انتخاب مرجع برای '+product['name'], 900, 520)
+    dialog, layout = _window(app, 'انتخاب مرجع برای '+product['name'], 640, 440)
     listing, refresh, current = _directory(app, layout)
     refresh(product.get('supplierId'))
     confirm = QPushButton('ثبت مرجع کالا')
