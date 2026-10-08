@@ -12,6 +12,16 @@ def effective_rate(data,p):
  c=p.get('purchasePrice',0)
  return (p['targetPriceOverride']/c-1)*100 if 'targetPriceOverride' in p and c else p.get('profitRateOverride',data['profitRate'])
 def target(data,p):return p.get('targetPriceOverride',math.floor(p['purchasePrice']*(1+effective_rate(data,p)/100)+.5))
+def channel_target(data,p,channel):
+ override=p.get('platformProfitOverrides',{}).get(channel,{})
+ if 'amount' in override:return override['amount']
+ if 'rate' in override:return math.floor(p['purchasePrice']*(1+override['rate']/100)+.5)
+ return target(data,p)
+def channel_rate(data,p,channel):
+ override=p.get('platformProfitOverrides',{}).get(channel,{})
+ if 'rate' in override:return override['rate']
+ if 'amount' in override:return (override['amount']/p['purchasePrice']-1)*100 if p['purchasePrice'] else 0
+ return effective_rate(data,p)
 def replay(data,m,before=None):
  state={v['id']:[0,float(v.get('openingUnitCost',0))] for v in m['variants']}
  records=[e for e in data.get('purchases',[])+data.get('sales',[])+data.get('inventoryAdjustments',[]) if e.get('motherId')==m['id'] and not e.get('cancelled')]

@@ -128,7 +128,7 @@ def purchase_dialog(app,api,product=None,existing=None):
   except (ValueError,TypeError) as ex:notice.setText(str(ex))
  button.clicked.connect(commit);d.exec()
 
-def edit_product(app,api):
+def edit_product(app,api,preset=None):
  d,l=app.dialog('ویرایش کالا');d.resize(1080,min(860,QApplication.primaryScreen().availableGeometry().height()-40));search,listing=app.product_picker(l);tabs=QTabWidget();tabs.setObjectName('settingsTabs');l.addWidget(tabs);selected={'p':None};notice=QLabel();notice.setWordWrap(True);l.addWidget(notice)
  def page(title):w=QWidget();lay=QVBoxLayout(w);tabs.addTab(w,title);return lay
  basic=page('مشخصات');form=QFormLayout();basic.addLayout(form);name=QLineEdit();supplier=supplier_combo(app);form.addRow('نام مدل فروش',name);form.addRow('مرجع',supplier)
@@ -154,10 +154,13 @@ def edit_product(app,api):
  purchase=QPushButton('ثبت خرید و افزایش موجودی');inventory.addWidget(purchase);packs=QLineEdit();packs.setPlaceholderText('تعداد داخل مدل فروش جدید؛ مثلاً 5');inventory.addWidget(packs);newpack=QPushButton('افزودن مدل فروش');inventory.addWidget(newpack)
  addvariant=QPushButton('افزودن رنگ / سایز جدید');inventory.addWidget(addvariant)
  inventory_widget=tabs.widget(4);tabs.removeTab(4);inventory_scroll=QScrollArea();inventory_scroll.setWidgetResizable(True);inventory_scroll.setFrameShape(QScrollArea.NoFrame);inventory_scroll.setWidget(inventory_widget);tabs.addTab(inventory_scroll,'موجودی / تنوع')
+ from platform_profit import PlatformProfitEditor
+ platform_editor=PlatformProfitEditor(app,api,spin);tabs.addTab(platform_editor,'سود پلتفرم‌ها')
  save=QPushButton('ثبت تغییرات سربرگ فعلی');l.addWidget(save);tabs.setEnabled(False);save.setEnabled(False)
  def choose(*_):
-  item=listing.currentItem();p=next((p for p in app.data['active'] if item and item.checkState()==Qt.Checked and p['id']==item.data(Qt.UserRole)),None);selected['p']=p;tabs.setEnabled(bool(p));save.setEnabled(bool(p))
+  item=listing.currentItem();p=preset or next((p for p in app.data['active'] if item and item.checkState()==Qt.Checked and p['id']==item.data(Qt.UserRole)),None);selected['p']=p;tabs.setEnabled(bool(p));save.setEnabled(bool(p))
   if not p:return
+  platform_editor.load(p)
   price_mode['value']='amount' if 'targetPriceOverride' in p else 'rate'
   name.setText(p['name']);supplier.setCurrentIndex(max(0,supplier.findData(p.get('supplierId'))));rate.blockSignals(True);amount.blockSignals(True);rate.setValue(E.effective_rate(app.data,p));amount.setValue(app.target(p));rate.blockSignals(False);amount.blockSignals(False);use_default.setChecked('profitRateOverride' not in p and 'targetPriceOverride' not in p)
   digi_enabled.setChecked(p.get('commission') is not None);basalam_enabled.setChecked(p.get('basalamCommission') is not None)
@@ -215,6 +218,7 @@ def edit_product(app,api):
     overrides={k:w.value() for k,w in feecontrols.items() if not inherit[k].isChecked()};cfg={**app.data['digiFees'],**overrides}
     if cfg['processing_min']>cfg['processing_max'] or not 0<=cfg['processing_percent']<100:raise ValueError('کف، سقف یا درصد پردازش معتبر نیست.')
     p['digiFeeOverride']=overrides
+   elif index==5:platform_editor.save(p)
    else:
     m=E.mother(app.data,p);quantities={v['id']:int(api['num'](it.item(r,2).text())) for r,v in enumerate(m['variants'])}
     if any(q<0 for q in quantities.values()):raise ValueError('موجودی منفی مجاز نیست.')
@@ -224,13 +228,16 @@ def edit_product(app,api):
     for r,v in enumerate(m['variants']):v['color'],v['size']=keys[r]
    app.history(p,'ویرایش کالا',before,copy.deepcopy(p));app.persist();app.render();choose();notice.setText('تغییرات ثبت شد.')
   except (ValueError,TypeError) as ex:notice.setText(str(ex))
- save.clicked.connect(commit);d.exec()
+ save.clicked.connect(commit)
+ if preset:
+  search.parentWidget().hide();l.insertWidget(0,QLabel('ویرایش: '+preset['name']));choose()
+ d.exec()
 
 def settlement_price(app,api,p,channel,mode='cash'):
  # Table uses cash Digikala; credit must solve for the same net target.
  if channel=='digikala':
   if p.get('commission') is None:return None
-  return api['solve'](app.target(p),p['commission'],p.get('platformRate',0) if mode=='credit' else 0,E.fees(app.data,p))
+  return api['solve'](E.channel_target(app.data,p,'digikala'),p['commission'],p.get('platformRate',0) if mode=='credit' else 0,E.fees(app.data,p))
  return app.price(p,channel)
 
 def sale_dialog(app,api,preset=None,existing=None):
@@ -382,9 +389,12 @@ def product_report(app,api,p):
    except ValueError as ex:notice.setText(str(ex))
  for title,fn in [('ویرایش فروش',edit),('لغو فروش',cancel)]:b=QPushButton(title);b.clicked.connect(fn);actions.addWidget(b)
  refresh();tabs.addTab(sp,'تاریخچه فروش');bp=QWidget();purchase_panel(app,api,QVBoxLayout(bp),m['id']);tabs.addTab(bp,'موجودی و خرید');ht=table(['تاریخ','نوع تغییر','قبل','بعد'])
- names={'name':'نام','stock':'موجودی بسته','purchasePrice':'قیمت خرید','profitRateOverride':'درصد سود','targetPriceOverride':'قیمت دلخواه','commission':'کمیسیون نقدی','platformRate':'کمیسیون اضافه اعتباری','basalamCommission':'کمیسیون باسلام','digiFeeOverride':'پردازش اختصاصی'}
+ names={'name':'نام','stock':'موجودی بسته','purchasePrice':'قیمت خرید','profitRateOverride':'درصد سود','targetPriceOverride':'قیمت دلخواه','commission':'کمیسیون نقدی','platformRate':'کمیسیون اضافه اعتباری','basalamCommission':'کمیسیون باسلام','digiFeeOverride':'پردازش اختصاصی','platformProfitOverrides':'سود اختصاصی پلتفرم‌ها'}
+ def format_value(key,value):
+  if key=='platformProfitOverrides':return '؛ '.join(api['CHANNELS'].get(c,c)+': '+(api['money'](o['amount']) if 'amount' in o else api['fa'](o.get('rate',0))+'٪') for c,o in value.items()) or 'سود اصلی کالا'
+  return api['money'](value) if key in ['purchasePrice','targetPriceOverride'] else api['fa'](value)
  def display(v):
-  if isinstance(v,dict):return '\n'.join(names[k]+': '+(api['money'](value) if k in ['purchasePrice','targetPriceOverride'] else api['fa'](value)) for k,value in v.items() if k in names)
+  if isinstance(v,dict):return '\n'.join(names[k]+': '+format_value(k,value) for k,value in v.items() if k in names)
   return '—' if v is None else api['fa'](v)
  fill(ht,[[api['fa'](api['jd'](e['date'])),e['label'],display(e.get('before')),display(e.get('after'))] for e in reversed(app.data['history']) if e['productId']==p['id']]);ht.setEditTriggers(QTableWidget.NoEditTriggers);tabs.addTab(ht,'تاریخچه تغییرات')
  def refresh_summary(*_):
@@ -424,11 +434,11 @@ def install(App,api):
   for label in self.findChildren(QLabel):label.setTextInteractionFlags(Qt.TextSelectableByMouse|Qt.TextSelectableByKeyboard)
   self.render()
  App.__init__=init
- App.target=lambda self,p:E.target(self.data,p)
+ App.target=lambda self,p,channel=None:E.channel_target(self.data,p,channel) if channel else E.target(self.data,p)
  def price(self,p,c):
-  if c=='digikala':return None if p.get('commission') is None else api['solve'](self.target(p),p['commission'],0,E.fees(self.data,p))
-  if c=='arazman':return math.ceil(self.target(p)/.934)
-  if c=='basalam':return None if p.get('basalamCommission') is None else math.ceil(self.target(p)/(1-p['basalamCommission']/100))
+  if c=='digikala':return None if p.get('commission') is None else api['solve'](self.target(p,c),p['commission'],0,E.fees(self.data,p))
+  if c=='arazman':return math.ceil(self.target(p,c)/.934)
+  if c=='basalam':return None if p.get('basalamCommission') is None else math.ceil(self.target(p,c)/(1-p['basalamCommission']/100))
   if c=='inperson' or c in api['SOCIAL'] and p.get('publishedChannels',{}).get(c):return self.target(p)
   return p.get(c+'Price')
  App.price=price
@@ -439,18 +449,18 @@ def install(App,api):
    if v is not None:
     if c=='digikala':p.setdefault('digiConfirmedPrice',v)
     else:p['confirmedPrices'].setdefault(c,v)
-    p['confirmedTargets'].setdefault(c,self.target(p))
+    p['confirmedTargets'].setdefault(c,self.target(p,c))
  App.baselines=baselines
  original_pending=App.pending_price
  def pending(self,p,c):
-  return original_pending(self,p,c) or self.price(p,c) is not None and c in ['digikala','arazman','basalam','snappshop'] and p.get('confirmedTargets',{}).get(c,self.target(p))!=self.target(p)
+  return original_pending(self,p,c) or self.price(p,c) is not None and c in ['digikala','arazman','basalam','snappshop'] and p.get('confirmedTargets',{}).get(c,self.target(p,c))!=self.target(p,c)
  App.pending_price=pending
  def confirm(self,p,c):
   new=self.price(p,c);old=p.get('digiConfirmedPrice') if c=='digikala' else p.get('confirmedPrices',{}).get(c)
   if self.yes('تأیید اصلاح قیمت','قیمت قبلی: '+api['money'](old)+'\nقیمت جدید: '+api['money'](new)+'\nآیا در '+api['CHANNELS'][c]+' اصلاح کرده‌اید؟'):
    if c=='digikala':p['digiConfirmedPrice']=new
    else:p.setdefault('confirmedPrices',{})[c]=new
-   p.setdefault('confirmedTargets',{})[c]=self.target(p);p['initialPendingPrices']=[x for x in p.get('initialPendingPrices',[]) if x!=c];self.history(p,'تأیید قیمت '+api['CHANNELS'][c],old,new);self.persist();self.render()
+   p.setdefault('confirmedTargets',{})[c]=self.target(p,c);p['initialPendingPrices']=[x for x in p.get('initialPendingPrices',[]) if x!=c];self.history(p,'تأیید قیمت '+api['CHANNELS'][c],old,new);self.persist();self.render()
  App.confirm_price=confirm
  def commission(self,p):
   d,l=self.dialog('کمیسیون دیجیکالا');f=QFormLayout();l.addLayout(f);cash=spin(p.get('commission',0),True);cash.setRange(0,99.99);credit=spin(p.get('platformRate',0),True);credit.setRange(0,99.99);f.addRow('کمیسیون نقدی (%)',cash);f.addRow('اضافه اعتباری (%)',credit);notice=QLabel();l.addWidget(notice);save=QPushButton('ثبت کمیسیون');l.addWidget(save)
@@ -465,6 +475,7 @@ def install(App,api):
  def render(self):
   E.sync(self.data);original_render(self);entries=self.data['deleted'] if self.mode=='deleted' else self.data['active'];entries=[p for p in entries if api['matches'](p['name'],self.search.text()) and (not self.pending or any(self.pending_price(p,c) for c in api['CHANNELS']))];pages=max(1,math.ceil(len(entries)/10))
   for r,p in enumerate(entries[self.page*10:self.page*10+10]):
+   rowholder=QWidget();rowlayout=QHBoxLayout(rowholder);rowlayout.setContentsMargins(2,0,2,0);rowlayout.setSpacing(1);number=QLabel(api['fa'](self.data['active'].index(p)+1) if p in self.data['active'] else '');number.setAlignment(Qt.AlignCenter);number.setTextInteractionFlags(Qt.TextSelectableByMouse);rowlayout.addWidget(number,1);pencil=QPushButton('✎');pencil.setToolTip('ویرایش '+p['name']);pencil.setFixedSize(24,28);pencil.setStyleSheet('QPushButton{padding:0;border:0;background:transparent;color:'+api['THEMES'][self.data['theme']][4]+';} QPushButton:hover{color:'+api['THEMES'][self.data['theme']][3]+';}');pencil.clicked.connect(lambda checked=False,p=p:self.edit(p));rowlayout.addWidget(pencil);self.table.setCellWidget(r,0,rowholder)
    stock=QWidget();vl=QVBoxLayout(stock);vl.setContentsMargins(2,2,2,2);vl.setSpacing(2);count=QLabel(api['fa'](p['stock']));count.setAlignment(Qt.AlignCenter);count.setProperty('stockPrimary',True);count.setStyleSheet('font-size:19px;font-weight:700;background:transparent;');small=QLabel(api['fa'](round(E.effective_rate(self.data,p),2))+'٪');small.setProperty('stockSecondary',True);small.setAlignment(Qt.AlignCenter);small.setStyleSheet('font-size:9px;background:transparent;');vl.addWidget(count);vl.addWidget(small);self.table.setCellWidget(r,3,stock)
    for col,c in enumerate(api['CHANNELS'],5):
     v=self.price(p,c)
@@ -492,7 +503,7 @@ def install(App,api):
    if previous>=0 and n-previous>1:self.near_layout.addWidget(QLabel('…'))
    b=QPushButton(api['fa'](n+1));b.setFixedSize(32,34);b.setCheckable(True);b.setChecked(n==self.page);b.setStyleSheet('padding:6px;min-width:20px;');b.clicked.connect(lambda checked=False,n=n:(setattr(self,'page',n),self.render()));self.near_layout.addWidget(b);previous=n
  App.render=render
- App.add=lambda self:add_product(self,api);App.edit=lambda self:edit_product(self,api);App.sell=lambda self:sale_dialog(self,api);App.sale_form=lambda self,p,sale=None:sale_dialog(self,api,p,sale);App.report=lambda self,p:product_report(self,api,p)
+ App.add=lambda self:add_product(self,api);App.edit=lambda self,p=None:edit_product(self,api,p);App.sell=lambda self:sale_dialog(self,api);App.sale_form=lambda self,p,sale=None:sale_dialog(self,api,p,sale);App.report=lambda self,p:product_report(self,api,p)
  def purge(self,p):
   if p not in self.data['deleted']:return
   mother_id=p['motherId'];remaining=[x for x in self.data['active']+self.data['deleted'] if x['id']!=p['id'] and x.get('motherId')==mother_id]

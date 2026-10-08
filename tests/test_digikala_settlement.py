@@ -9,8 +9,8 @@ class SettlementTests(unittest.TestCase):
  def test_credit_preserves_target_and_details_reconcile(self):
   for target in [100000,1000000,10000000]:
    for override in [{},{'processing_min':22500,'processing_max':180000}]:
-    data={'digiFees':dict(processing_percent=7,processing_min=36000,processing_max=240000,label_cost=6000,tax_percent=10)}
-    p={'purchasePrice':target*.75,'commission':7,'platformRate':8,'digiFeeOverride':override}
+    data={'profitRate':25,'digiFees':dict(processing_percent=7,processing_min=36000,processing_max=240000,label_cost=6000,tax_percent=10)}
+    p={'targetPriceOverride':target,'purchasePrice':target*.75,'commission':7,'platformRate':8,'digiFeeOverride':override}
     app=SimpleNamespace(data=data,target=lambda p:target,price=lambda p,c:UI.settlement_price(app,vars(M),p,c,'cash'))
     cash,cashparts=UI.breakdown(app,vars(M),p,'digikala','cash')
     credit,parts=UI.breakdown(app,vars(M),p,'digikala','credit')
