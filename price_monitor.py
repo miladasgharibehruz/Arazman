@@ -498,14 +498,16 @@ class App(QMainWindow):
    if values['processing_min']>values['processing_max']:notify('کف هزینه نباید بیشتر از سقف باشد');return
    self.data['digiFees']=values;self.persist();self.render();notify('تنظیمات دیجیکالا تغییر کرد')
   save.clicked.connect(save_fees);tabs.addTab(page,'دیجیکالا')
-  page=QWidget();layout=QVBoxLayout(page);description=QLabel('همه موجودی‌های رنگ و سایز و مدل‌های فروش صفر می‌شوند. کالاها، قیمت‌گذاری، مراجع و سابقه خرید و فروش حفظ می‌شوند. پیش از اجرا پشتیبان کامل گرفته می‌شود.');description.setWordWrap(True);layout.addWidget(description);layout.addStretch();reset=QPushButton('صفر کردن همه موجودی‌ها');layout.addWidget(reset)
-  def reset_stock():
-   if not self.yes('صفر کردن موجودی‌ها','آیا موجودی تمام کالاها و تنوع‌هایشان صفر شود؟ فهرست کالاها و قیمت‌گذاری حفظ می‌شوند.'):return
+  page=QWidget();layout=QVBoxLayout(page);description=QLabel('شروع جدید: موجودی فعلی به‌عنوان خرید اولیه امروز ثبت می‌شود. خریدها، فروش‌ها و تاریخچه قبلی پاک می‌شوند؛ کالاها، قیمت‌گذاری و مراجع حفظ می‌شوند. پیش از اجرا پشتیبان کامل گرفته می‌شود.');description.setWordWrap(True);layout.addWidget(description);layout.addStretch()
+  def restart_stock(zero_only=False):
+   question='آیا فقط تمام موجودی‌ها صفر شوند؟ کالاها، قیمت‌گذاری و سوابق حفظ می‌شوند.' if zero_only else 'آیا خریدها و فروش‌های قبلی پاک و موجودی فعلی به‌عنوان خرید اولیه امروز ثبت شود؟ کالاها، قیمت‌گذاری و مراجع حفظ می‌شوند.'
+   if not self.yes('تأیید تغییر موجودی',question):return
    try:
     import inventory_engine as E
-    backup=E.reset_inventory(self.data,ROOT);self.persist();self.render();notify('موجودی‌ها صفر شدند؛ پشتیبان ذخیره شد' if backup else 'همه موجودی‌ها از قبل صفر هستند')
+    E.inventory_restart(self.data,ROOT,zero_only);self.persist();self.render();notify('موجودی‌ها صفر شدند' if zero_only else 'شروع جدید با موجودی فعلی ثبت شد')
    except (OSError,ValueError) as ex:notify('انجام نشد: '+str(ex))
-  reset.clicked.connect(reset_stock);tabs.addTab(page,'موجودی')
+  reset=QPushButton('صفر کردن همه موجودی‌ها');reset.clicked.connect(lambda checked=False:restart_stock(True));layout.addWidget(reset)
+  restart=QPushButton('شروع جدید با موجودی فعلی');restart.clicked.connect(lambda checked=False:restart_stock(False));layout.addWidget(restart);tabs.addTab(page,'موجودی')
 
   for label in ['اسنپ شاپ']:
    placeholder=QWidget();tabs.addTab(placeholder,label)

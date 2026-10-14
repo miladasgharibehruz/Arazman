@@ -51,18 +51,33 @@ class InventoryTests(unittest.TestCase):
    self.assertEqual(d['suppliers'],suppliers);self.assertTrue(d['businessReset27'])
    saved=__import__('json').loads(next((Path(folder)/'backups').glob('before-reset-v2.7-*.json')).read_text());self.assertEqual(saved['suppliers'],suppliers);self.assertTrue(saved['purchases'])
    d['active']=[{'name':'new'}];E.initialize(d,Path(folder));self.assertEqual(d['active'],[{'name':'new'}]);self.assertEqual(len(list((Path(folder)/'backups').glob('*.json'))),1)
- def test_stock_reset_preserves_prices_history_and_reentry(self):
-  self.p.update(commission=7,platformProfitOverrides={'digikala':{'rate':10}},supplierId='supplier')
-  sale=self.sell(self.p,2,[('blue',2)])
+ def test_restart_uses_current_stock_and_retains_configuration(self):
+  self.sell(self.p,2,[('blue',2)])
   E.add_purchase(self.d,self.m,[dict(variantId='red',quantity=5,unitCost=200)],D)
-  before=copy.deepcopy(self.d);prices=[p['purchasePrice'] for p in self.d['active']]
+  E.adjust(self.d,self.m,{'blue':4,'red':7,'green':3})
+  self.d['suppliers']=[{'id':'s','name':'مرجع'}];self.d['history']=[{'old':True}];self.d['generalPurchases']=[{'old':True}]
+  self.p.update(supplierId='s',commission=7,platformProfitOverrides={'digikala':{'rate':10}})
+  before=copy.deepcopy(self.d);stocks=[v['stock'] for v in self.m['variants']];prices=[p['purchasePrice'] for p in self.d['active']]
+  expected=sum(v['stock']*v['averageCost'] for v in self.m['variants'])
   with tempfile.TemporaryDirectory() as folder:
-   backup=E.reset_inventory(self.d,Path(folder));self.assertTrue(backup.exists())
-   self.assertEqual([p['stock'] for p in self.d['active']],[0,0]);self.assertEqual([p['purchasePrice'] for p in self.d['active']],prices)
-   for key in ['sales','purchases']:self.assertEqual(self.d[key],before[key])
-   self.assertEqual(self.p['platformProfitOverrides'],before['active'][0]['platformProfitOverrides'])
-   self.assertEqual(self.p['supplierId'],'supplier');self.assertIsNone(E.reset_inventory(self.d,Path(folder)))
-   E.adjust(self.d,self.m,{'blue':6,'red':0,'green':0});self.assertEqual((self.p['stock'],self.pack['stock']),(6,2))
-   self.assertEqual(sale['purchasePriceAtSale'],100)
+   backup=E.inventory_restart(self.d,Path(folder));self.assertTrue(backup.exists())
+   for key in ['sales','inventoryAdjustments','history','generalPurchases']:self.assertEqual(self.d[key],[])
+   self.assertEqual([v['stock'] for v in self.d['mothers'][0]['variants']],stocks)
+   self.assertEqual([p['purchasePrice'] for p in self.d['active']],prices)
+   self.assertEqual(self.d['suppliers'],before['suppliers']);self.assertEqual(self.d['active'][0]['platformProfitOverrides'],before['active'][0]['platformProfitOverrides'])
+   total=sum(l['quantity']*l['unitCost'] for e in self.d['purchases'] for l in e['lines']);self.assertAlmostEqual(total,expected)
+   self.assertTrue(self.d['purchases'][0]['openingRestart']);self.assertEqual(self.d['purchases'][0]['date'],D)
+   self.assertTrue(__import__('json').loads(backup.read_text())['sales'])
+   E.adjust(self.d,self.d['mothers'][0],{'blue':6,'red':7,'green':3});self.assertEqual(self.d['active'][0]['stock'],16)
+ def test_restart_backup_failure_does_not_modify_data(self):
+  before=copy.deepcopy(self.d)
+  with tempfile.TemporaryDirectory() as folder:
+   root=Path(folder);(root/'backups').write_text('blocked')
+   with self.assertRaises(OSError):E.inventory_restart(self.d,root)
+   self.assertEqual(self.d,before)
+ def test_zero_only_keeps_history(self):
+  before=copy.deepcopy(self.d)
+  with tempfile.TemporaryDirectory() as folder:E.inventory_restart(self.d,Path(folder),True)
+  self.assertEqual(self.d['purchases'],before['purchases']);self.assertTrue(all(p['stock']==0 for p in self.d['active']))
 if __name__=='__main__':unittest.main()
 

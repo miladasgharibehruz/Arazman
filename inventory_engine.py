@@ -92,20 +92,30 @@ def adjust(data,m,quantities):
  state=replay(data,m);lines=[dict(variantId=k,quantity=q-state[k][0]) for k,q in quantities.items() if q!=state[k][0]]
  if lines:transact(data,'inventoryAdjustments',dict(id=uid(),motherId=m['id'],kind='adjust',date=date.today().isoformat(),createdAt=stamp(),lines=lines))
 
-def reset_inventory(data,root):
- """Zero physical stock atomically, retaining products, costs and history."""
+def inventory_restart(data,root,zero_only=False):
+ """Validated, backed-up stock reset or fresh opening purchase ledger."""
  import json
- trial=copy.deepcopy(data);sync(trial);records=[]
- for m in trial.get('mothers',[]):
-  state=replay(trial,m)
-  lines=[dict(variantId=k,quantity=-v[0]) for k,v in state.items() if v[0]]
-  if lines:records.append(dict(id=uid(),motherId=m['id'],kind='adjust',date=date.today().isoformat(),createdAt=stamp(),reason='صفر کردن همه موجودی‌ها',lines=lines))
- if not records:return None
- trial.setdefault('inventoryAdjustments',[]).extend(records);sync(trial)
+ trial=copy.deepcopy(data);sync(trial);day=date.today().isoformat()
+ if zero_only:
+  for m in trial.get('mothers',[]):adjust(trial,m,{v['id']:0 for v in m['variants']})
+ else:
+  openings=[]
+  for m in trial.get('mothers',[]):
+   lines=[dict(variantId=v['id'],quantity=v['stock'],unitCost=v['averageCost']) for v in m['variants'] if v['stock']>0]
+   for v in m['variants']:v['openingUnitCost']=v['averageCost']
+   if lines:
+    supplier=next((p.get('supplierId') for p in trial.get('active',[])+trial.get('deleted',[]) if p.get('motherId')==m['id'] and p.get('supplierId')),None)
+    openings.append(dict(id=uid(),motherId=m['id'],kind='purchase',date=day,createdAt=stamp(),supplierId=supplier,lines=lines,openingRestart=True))
+   m['firstPurchaseDate']=day
+  for key in ['sales','purchases','inventoryAdjustments','generalPurchases','stockEvents','history']:trial[key]=[]
+  trial['purchases']=openings
+  for p in trial.get('active',[])+trial.get('deleted',[]):p['firstPurchaseDate']=day
+  trial['inventoryRestartDate']=day
+ sync(trial)
  folder=root/'backups';folder.mkdir(parents=True,exist_ok=True)
- backup=folder/('before-stock-reset-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.json')
+ backup=folder/(('before-stock-reset-' if zero_only else 'before-inventory-restart-')+datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.json')
  backup.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf8')
- data.setdefault('inventoryAdjustments',[]).extend(records);sync(data)
+ data.clear();data.update(trial)
  return backup
 
 def initialize(data,root):
