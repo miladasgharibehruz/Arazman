@@ -3,7 +3,7 @@
 Windows 11 inventory and multi-channel price monitor.
 
 ## Release
-Current source version: **3.1**. Create release tag `v3.1` on `main`. GitHub Actions builds the Windows installer and publishes it with a SHA-256 checksum. The version in the application follows the release tag. Next versions: v1.2 through v1.9, then v2.0.
+Current source version: **3.2**. Create release tag `v3.2` on `main`. GitHub Actions builds the Windows installer and publishes it with a SHA-256 checksum. The version in the application follows the release tag. Next versions: v1.2 through v1.9, then v2.0.
 
 Updates use this repository’s public GitHub Releases. User data and backups live separately in `%LOCALAPPDATA%/ArazmanPriceMonitor`.
 

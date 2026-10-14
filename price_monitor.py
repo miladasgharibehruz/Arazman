@@ -195,6 +195,16 @@ class PersianCalendar(QDialog):
   self.value=x.togregorian().isoformat()
   if self.value>today():QMessageBox.warning(self,'تاریخ','تاریخ آینده مجاز نیست.');return
   self.accept()
+class AntMark(QWidget):
+ def __init__(self,parent=None):
+  super().__init__(parent);self.setFixedSize(32,28);self.setToolTip('مورچه')
+ def paintEvent(self,event):
+  painter=QPainter(self);painter.setRenderHint(QPainter.Antialiasing);color=self.palette().windowText().color();painter.setPen(QPen(color,1.4,Qt.SolidLine,Qt.RoundCap));painter.setBrush(color)
+  for x,y in [(12,11),(16,14),(20,17)]:
+   painter.drawLine(x,y,x-6,y+1);painter.drawLine(x-6,y+1,x-8,y+5);painter.drawLine(x,y,x+5,y-3);painter.drawLine(x+5,y-3,x+8,y-2)
+  painter.drawLine(10,8,7,3);painter.drawLine(7,3,4,3);painter.drawLine(13,7,15,2);painter.drawLine(15,2,18,2)
+  painter.drawEllipse(QRectF(7,5,8,7));painter.drawEllipse(QRectF(12,11,7,6));painter.drawEllipse(QRectF(17,16,10,8));painter.end()
+
 class App(QMainWindow):
  def __init__(self):
   super().__init__();self.setWindowTitle('Arazman');self.resize(1500,850)
@@ -213,7 +223,7 @@ class App(QMainWindow):
   for title,fn,name in [('افزودن کالا',self.add,'addButton'),('ویرایش کالا',self.edit,'editButton'),('حذف کالا',self.remove,'deleteButton')]:
    b=self.button(bar,title,fn);b.setObjectName(name);b.setFixedSize(124,44);b.setCursor(Qt.PointingHandCursor)
   self.layout.addLayout(bar);self.table=HoverTable(0,16);self.table.setHorizontalHeaderLabels(HEAD[:4]+[fa(self.data['profitRate'])+'٪']+HEAD[5:]);self.table.setEditTriggers(QTableWidget.NoEditTriggers);self.table.setSelectionMode(QTableWidget.NoSelection);self.table.setFocusPolicy(Qt.NoFocus);self.table.setMouseTracking(False);self.platform_header=PlatformHeader(self.table);self.table.setHorizontalHeader(self.platform_header);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch);self.table.verticalHeader().hide();self.table.setWordWrap(True);self.layout.addWidget(self.table)
-  bottom=QHBoxLayout();sale_area=QWidget();sale_area.setFixedWidth(220);sale_layout=QHBoxLayout(sale_area);sale_layout.setContentsMargins(0,0,0,0);self.sale_button=self.button(sale_layout,'＋  ثبت فروش',self.sell);self.sale_button.setObjectName('saleButton');self.sale_button.setFixedSize(210,56);self.sale_button.setCursor(Qt.PointingHandCursor);bottom.addWidget(sale_area);bottom.addStretch();pager=QWidget();pager_layout=QHBoxLayout(pager);pager_layout.setContentsMargins(0,0,0,0);self.button(pager_layout,'قبلی',lambda:self.turn(-1));self.page_label=QLabel();self.page_label.setAlignment(Qt.AlignCenter);self.page_label.setMinimumWidth(70);pager_layout.addWidget(self.page_label);self.button(pager_layout,'بعدی',lambda:self.turn(1));bottom.addWidget(pager);bottom.addStretch();balance=QWidget();balance.setFixedWidth(220);version_layout=QHBoxLayout(balance);version_layout.setContentsMargins(0,0,0,0);version_label=QLabel('V'+VERSION);version_label.setLayoutDirection(Qt.LeftToRight);version_label.setAlignment(Qt.AlignLeft|Qt.AlignVCenter);version_layout.addWidget(version_label);bottom.addWidget(balance);self.layout.addLayout(bottom)
+  bottom=QHBoxLayout();sale_area=QWidget();sale_area.setFixedWidth(220);sale_layout=QHBoxLayout(sale_area);sale_layout.setContentsMargins(0,0,0,0);self.sale_button=self.button(sale_layout,'＋  ثبت فروش',self.sell);self.sale_button.setObjectName('saleButton');self.sale_button.setFixedSize(210,56);self.sale_button.setCursor(Qt.PointingHandCursor);bottom.addWidget(sale_area);bottom.addStretch();pager=QWidget();pager_layout=QHBoxLayout(pager);pager_layout.setContentsMargins(0,0,0,0);self.button(pager_layout,'قبلی',lambda:self.turn(-1));self.page_label=QLabel();self.page_label.setAlignment(Qt.AlignCenter);self.page_label.setMinimumWidth(70);pager_layout.addWidget(self.page_label);self.button(pager_layout,'بعدی',lambda:self.turn(1));bottom.addWidget(pager);bottom.addStretch();balance=QWidget();balance.setFixedWidth(220);version_layout=QVBoxLayout(balance);version_layout.setContentsMargins(0,0,0,0);version_layout.setSpacing(0);version_label=QLabel('V'+VERSION);version_label.setLayoutDirection(Qt.LeftToRight);version_label.setAlignment(Qt.AlignLeft|Qt.AlignVCenter);version_layout.addWidget(version_label);version_layout.addWidget(AntMark(balance),0,Qt.AlignLeft);bottom.addWidget(balance);self.layout.addLayout(bottom)
   self.apply_theme();self.render();self.timer=QTimer(self);self.timer.timeout.connect(self.render);self.timer.start(60000)
  def button(self,layout,title,fn):
   b=QPushButton(title);b.clicked.connect(fn);layout.addWidget(b);return b
