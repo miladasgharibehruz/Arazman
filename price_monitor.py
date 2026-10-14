@@ -498,6 +498,15 @@ class App(QMainWindow):
    if values['processing_min']>values['processing_max']:notify('کف هزینه نباید بیشتر از سقف باشد');return
    self.data['digiFees']=values;self.persist();self.render();notify('تنظیمات دیجیکالا تغییر کرد')
   save.clicked.connect(save_fees);tabs.addTab(page,'دیجیکالا')
+  page=QWidget();layout=QVBoxLayout(page);description=QLabel('همه موجودی‌های رنگ و سایز و مدل‌های فروش صفر می‌شوند. کالاها، قیمت‌گذاری، مراجع و سابقه خرید و فروش حفظ می‌شوند. پیش از اجرا پشتیبان کامل گرفته می‌شود.');description.setWordWrap(True);layout.addWidget(description);layout.addStretch();reset=QPushButton('صفر کردن همه موجودی‌ها');layout.addWidget(reset)
+  def reset_stock():
+   if not self.yes('صفر کردن موجودی‌ها','آیا موجودی تمام کالاها و تنوع‌هایشان صفر شود؟ فهرست کالاها و قیمت‌گذاری حفظ می‌شوند.'):return
+   try:
+    import inventory_engine as E
+    backup=E.reset_inventory(self.data,ROOT);self.persist();self.render();notify('موجودی‌ها صفر شدند؛ پشتیبان ذخیره شد' if backup else 'همه موجودی‌ها از قبل صفر هستند')
+   except (OSError,ValueError) as ex:notify('انجام نشد: '+str(ex))
+  reset.clicked.connect(reset_stock);tabs.addTab(page,'موجودی')
+
   for label in ['اسنپ شاپ']:
    placeholder=QWidget();tabs.addTab(placeholder,label)
   page=QWidget();layout=QGridLayout(page);layout.setContentsMargins(24,24,24,24)

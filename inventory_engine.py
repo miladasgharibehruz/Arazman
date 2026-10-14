@@ -92,6 +92,22 @@ def adjust(data,m,quantities):
  state=replay(data,m);lines=[dict(variantId=k,quantity=q-state[k][0]) for k,q in quantities.items() if q!=state[k][0]]
  if lines:transact(data,'inventoryAdjustments',dict(id=uid(),motherId=m['id'],kind='adjust',date=date.today().isoformat(),createdAt=stamp(),lines=lines))
 
+def reset_inventory(data,root):
+ """Zero physical stock atomically, retaining products, costs and history."""
+ import json
+ trial=copy.deepcopy(data);sync(trial);records=[]
+ for m in trial.get('mothers',[]):
+  state=replay(trial,m)
+  lines=[dict(variantId=k,quantity=-v[0]) for k,v in state.items() if v[0]]
+  if lines:records.append(dict(id=uid(),motherId=m['id'],kind='adjust',date=date.today().isoformat(),createdAt=stamp(),reason='صفر کردن همه موجودی‌ها',lines=lines))
+ if not records:return None
+ trial.setdefault('inventoryAdjustments',[]).extend(records);sync(trial)
+ folder=root/'backups';folder.mkdir(parents=True,exist_ok=True)
+ backup=folder/('before-stock-reset-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f')+'.json')
+ backup.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf8')
+ data.setdefault('inventoryAdjustments',[]).extend(records);sync(data)
+ return backup
+
 def initialize(data,root):
  if data.get('inventorySchema')==2 and data.get('businessReset27'):return
  # Explicitly requested V2.7 one-time reset; keep the supplier directory.

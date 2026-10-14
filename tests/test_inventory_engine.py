@@ -51,5 +51,18 @@ class InventoryTests(unittest.TestCase):
    self.assertEqual(d['suppliers'],suppliers);self.assertTrue(d['businessReset27'])
    saved=__import__('json').loads(next((Path(folder)/'backups').glob('before-reset-v2.7-*.json')).read_text());self.assertEqual(saved['suppliers'],suppliers);self.assertTrue(saved['purchases'])
    d['active']=[{'name':'new'}];E.initialize(d,Path(folder));self.assertEqual(d['active'],[{'name':'new'}]);self.assertEqual(len(list((Path(folder)/'backups').glob('*.json'))),1)
+ def test_stock_reset_preserves_prices_history_and_reentry(self):
+  self.p.update(commission=7,platformProfitOverrides={'digikala':{'rate':10}},supplierId='supplier')
+  sale=self.sell(self.p,2,[('blue',2)])
+  E.add_purchase(self.d,self.m,[dict(variantId='red',quantity=5,unitCost=200)],D)
+  before=copy.deepcopy(self.d);prices=[p['purchasePrice'] for p in self.d['active']]
+  with tempfile.TemporaryDirectory() as folder:
+   backup=E.reset_inventory(self.d,Path(folder));self.assertTrue(backup.exists())
+   self.assertEqual([p['stock'] for p in self.d['active']],[0,0]);self.assertEqual([p['purchasePrice'] for p in self.d['active']],prices)
+   for key in ['sales','purchases']:self.assertEqual(self.d[key],before[key])
+   self.assertEqual(self.p['platformProfitOverrides'],before['active'][0]['platformProfitOverrides'])
+   self.assertEqual(self.p['supplierId'],'supplier');self.assertIsNone(E.reset_inventory(self.d,Path(folder)))
+   E.adjust(self.d,self.m,{'blue':6,'red':0,'green':0});self.assertEqual((self.p['stock'],self.pack['stock']),(6,2))
+   self.assertEqual(sale['purchasePriceAtSale'],100)
 if __name__=='__main__':unittest.main()
 
